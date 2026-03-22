@@ -1,6 +1,6 @@
 //const API_URL = 'http://51.20.73.184:3000';
 const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:" || window.location.hostname === "";
-const API_URL = isLocal ? "http://localhost:3000" : "https://jewellery-backend-3-pinu.onrender.com";
+const API_URL = isLocal ? "http://localhost:3000" : "https://jewelleryshop-nk0z.onrender.com";
 function exportToExcel(type) {
     let containerId = "";
     let baseFileName = type;
