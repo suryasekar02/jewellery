@@ -1,0 +1,277 @@
+-- Table structure for table `category`
+CREATE TABLE `category` (
+  `cid` varchar(15) NOT NULL,
+  `categoryname` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`cid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `dse`
+CREATE TABLE `dse` (
+  `did` varchar(15) NOT NULL,
+  `dsename` varchar(50) DEFAULT NULL,
+  `mobile` varchar(15) DEFAULT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `openbalance` int(11) DEFAULT NULL,
+  `totalbal` int(11) DEFAULT NULL,
+  PRIMARY KEY (`did`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `expenses` (
+  `exid` varchar(20) NOT NULL,
+  `date` varchar(15) NOT NULL,
+  `time` varchar(15) NOT NULL,
+  `particulars` varchar(50) NOT NULL,
+  `paymode` varchar(50) NOT NULL,
+  `amount` int(11) DEFAULT NULL,
+  `pure` float NOT NULL,
+  `description1` varchar(200) NOT NULL,
+  PRIMARY KEY (`exid`)
+) ENGINE=InnoDB 
+DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `partypayout` (
+  `parid` varchar(20) NOT NULL,
+  `date` varchar(15) NOT NULL,
+  `time` varchar(15) NOT NULL,
+  `partyname` varchar(50) NOT NULL,
+  `pure` float NOT NULL,
+  `mc` int(11) DEFAULT NULL,
+  `description` varchar(200) DEFAULT NULL,
+  PRIMARY KEY (`parid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `inventory`
+CREATE TABLE `inventory` (
+  `inventid` varchar(20) NOT NULL,
+  `date` varchar(12) NOT NULL,
+  `dse` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`inventid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `inventoryitem`
+CREATE TABLE `inventoryitem` (
+  `iid` int(11) NOT NULL AUTO_INCREMENT,
+  `inventid` varchar(20) NOT NULL,
+  `item` varchar(50) NOT NULL,
+  `coverwt` float NOT NULL,
+  `count` int(11) NOT NULL,
+  `wt` float NOT NULL,
+  `withcoverwt` float NOT NULL,
+  PRIMARY KEY (`iid`),
+  KEY `inventid` (`inventid`),
+  CONSTRAINT `inventoryitem_ibfk_1` FOREIGN KEY (`inventid`) REFERENCES `inventory` (`inventid`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `item`
+CREATE TABLE `item` (
+  `iid` varchar(15) NOT NULL,
+  `itemname` varchar(50) DEFAULT NULL,
+  `coverweight` float DEFAULT NULL,
+  `category` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`iid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `particulars`
+CREATE TABLE `particulars` (
+  `particulars` varchar(200) NOT NULL,
+  PRIMARY KEY (`particulars`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `party`
+CREATE TABLE `party` (
+  `pid` varchar(15) NOT NULL,
+  `partyname` varchar(50) DEFAULT NULL,
+  `mobile` varchar(10) DEFAULT NULL,
+  `pure` float NOT NULL,
+  `makecharge` float NOT NULL,
+  PRIMARY KEY (`pid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `payment`
+CREATE TABLE `payment` (
+  `payid` varchar(20) NOT NULL,
+  `date` varchar(15) NOT NULL,
+  `time` varchar(15) NOT NULL,
+  `dsename` varchar(50) NOT NULL,
+  `mode` varchar(15) NOT NULL,
+  `amount` int(11) DEFAULT NULL,
+  `description` varchar(200) DEFAULT NULL,
+  PRIMARY KEY (`payid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `petrolexpenses`
+CREATE TABLE `petrolexpenses` (
+  `petid` varchar(20) NOT NULL,
+  `date` varchar(15) NOT NULL,
+  `time` varchar(15) NOT NULL,
+  `dsename` varchar(50) NOT NULL,
+  `amount` int(11) DEFAULT NULL,
+  `description` varchar(200) DEFAULT NULL,
+  `userid` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`petid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `purchase`
+CREATE TABLE `purchase` (
+  `purchaseid` varchar(20) NOT NULL,
+  `date` varchar(12) NOT NULL,
+  `party` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`purchaseid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `purchaseitem`
+CREATE TABLE `purchaseitem` (
+  `pid` int(11) NOT NULL AUTO_INCREMENT,
+  `purchaseid` varchar(20) NOT NULL,
+  `item` varchar(50) NOT NULL,
+  `coverwt` float NOT NULL,
+  `count` int(11) NOT NULL,
+   `mc` float NOT NULL,
+  `wt` float NOT NULL,
+  `percent` float NOT NULL,
+  `pure` double DEFAULT 0,
+  `withcoverwt` float NOT NULL,
+  `totalamount` float NOT NULL,
+  PRIMARY KEY (`pid`), 
+  KEY `purchaseid` (`purchaseid`),
+  CONSTRAINT `purchaseitem_ibfk_1` FOREIGN KEY (`purchaseid`) REFERENCES `purchase` (`purchaseid`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `puremc`
+CREATE TABLE `puremc` (
+  `pureid` varchar(20) NOT NULL,
+  `date` varchar(12) NOT NULL,
+  `dsename` varchar(50) NOT NULL,
+  `retailername` varchar(50) NOT NULL,
+  `userid` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`pureid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `puremcitem`
+CREATE TABLE `puremcitem` (
+  `pid` int(11) NOT NULL AUTO_INCREMENT,
+  `pureid` varchar(20) NOT NULL,
+  `item` varchar(50) NOT NULL,
+  `weight` float NOT NULL,
+  `count` int(11) NOT NULL,
+  `percent` float NOT NULL,
+  `mc` float NOT NULL,
+  `totalwt` float NOT NULL,
+  `totalamount` float NOT NULL,
+  `pure` double DEFAULT 0,
+  `cover` double DEFAULT 0,
+  PRIMARY KEY (`pid`),
+  KEY `pureid` (`pureid`),
+  CONSTRAINT `puremcitem_ibfk_1` FOREIGN KEY (`pureid`) REFERENCES `puremc` (`pureid`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `retailer`
+CREATE TABLE `retailer` (
+  `rid` varchar(15) NOT NULL,
+  `dsename` varchar(50) DEFAULT NULL,
+  `retailername` varchar(50) DEFAULT NULL,
+  `mobile` varchar(15) DEFAULT NULL,
+  `location` varchar(100) DEFAULT NULL,
+  `district` varchar(100) DEFAULT NULL,
+  `openbalance` int(11) DEFAULT NULL,
+  `openpure` int(11) DEFAULT NULL,
+  PRIMARY KEY (`rid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `retailerpayment`
+CREATE TABLE `retailerpayment` (
+  `payid` varchar(20) NOT NULL,
+  `date` varchar(15) NOT NULL,
+  `time` varchar(15) NOT NULL,
+  `dsename` varchar(50) NOT NULL,
+  `retailername` varchar(50) NOT NULL,
+  `mode` varchar(15) NOT NULL,
+  `silverweight` float NOT NULL,
+  `amount` int(11) DEFAULT NULL,
+  `pure` double DEFAULT 0,
+  `purecash` double DEFAULT 0,
+  `description` varchar(200) DEFAULT NULL,  
+  `userid` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`payid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `sales`
+CREATE TABLE `sales` (
+  `invno` varchar(20) NOT NULL,
+  `date` varchar(12) NOT NULL,
+  `dse` varchar(50) NOT NULL,
+  `retailer` varchar(50) NOT NULL,
+  `discount` double DEFAULT 0,
+  `finaltotal` double DEFAULT 0,
+  `userid` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`invno`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `salesitem`
+CREATE TABLE `salesitem` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `invno` varchar(20) NOT NULL,
+  `item` varchar(50) NOT NULL,
+  `weight` float NOT NULL,
+  `count` int(11) NOT NULL,
+  `rate` float NOT NULL,
+  `coverwt` float NOT NULL,
+  `total` float NOT NULL,
+  `totalweight` float NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `invno` (`invno`),
+  CONSTRAINT `salesitem_ibfk_1` FOREIGN KEY (`invno`) REFERENCES `sales` (`invno`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `stock`
+CREATE TABLE `stock` (
+  `stockid` varchar(20) NOT NULL,
+  `date` varchar(12) NOT NULL,
+  `dse` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`stockid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `stocksitem`
+CREATE TABLE `stocksitem` (
+  `sid` int(11) NOT NULL AUTO_INCREMENT,
+  `stockid` varchar(20) NOT NULL,
+  `item` varchar(50) NOT NULL,
+  `coverwt` float NOT NULL,
+  `count` int(11) NOT NULL,
+  `wt` float NOT NULL,
+  `withcoverwt` float NOT NULL,
+  PRIMARY KEY (`sid`),
+  KEY `stockid` (`stockid`),
+  CONSTRAINT `stocksitem_ibfk_1` FOREIGN KEY (`stockid`) REFERENCES `stock` (`stockid`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `trashtable`
+CREATE TABLE `trashtable` (
+  `trashId` int(11) NOT NULL AUTO_INCREMENT,
+  `tableName` varchar(255) NOT NULL,
+  `recordId` int(11) NOT NULL,
+  `field1` text DEFAULT NULL,
+  `field2` text DEFAULT NULL,
+  `field3` text DEFAULT NULL,
+  `field4` text DEFAULT NULL,
+  `field5` text DEFAULT NULL,
+  `field6` text DEFAULT NULL,
+  `field7` text DEFAULT NULL,
+  `deletedBy` varchar(255) DEFAULT NULL,
+  `deletedAt` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`trashId`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Table structure for table `user`
+CREATE TABLE `user` (
+  `userid` varchar(10) NOT NULL,
+  `username` varchar(100) DEFAULT NULL,
+  `loginname` varchar(100) DEFAULT NULL,
+  `password` varchar(100) DEFAULT NULL,
+  `mobile` varchar(15) DEFAULT NULL,
+  `email` varchar(100) NOT NULL,
+  `Role` varchar(50) NOT NULL,
+  PRIMARY KEY (`userid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
