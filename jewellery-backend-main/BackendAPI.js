@@ -1701,6 +1701,7 @@ app.post('/add_retailer_payment', (req, res) => {
         };
 
         let sql = 'INSERT INTO retailerpayment SET ?';
+
         db.query(sql, payment, (err, result) => {
             if (err) {
                 return db.rollback(() => {
@@ -1710,6 +1711,7 @@ app.post('/add_retailer_payment', (req, res) => {
             }
 
             // Update Retailer Balance
+            /*
             let sqlUpdateRetailer = 'UPDATE retailer SET openbalance = openbalance - ? WHERE retailername = ?';
             db.query(sqlUpdateRetailer, [payment.amount, payment.retailername], (err, result) => {
                 if (err) {
@@ -1728,6 +1730,7 @@ app.post('/add_retailer_payment', (req, res) => {
                     res.send('Retailer Payment added and balance updated successfully');
                 });
             });
+            */
         });
     });
 });
