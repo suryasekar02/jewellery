@@ -139,7 +139,36 @@ function initDashboard() {
     });
 
     loadDashboardStats();
+    loadDashboard(); // Initial load for performance cards
+    initDashboardFilters();
     if (typeof initAdvancedSearch === 'function') initAdvancedSearch(); // Initialize Search
+}
+
+function initDashboardFilters() {
+    const filterSelect = document.getElementById('timeFilter');
+    const customRange = document.getElementById('dashboardCustomRange');
+    const applyBtn = document.getElementById('applyCustomFilter');
+
+    if (!filterSelect) return;
+
+    filterSelect.addEventListener('change', () => {
+        if (filterSelect.value === 'custom') {
+            customRange.classList.remove('d-none');
+        } else {
+            customRange.classList.add('d-none');
+            loadDashboard();
+        }
+    });
+
+    applyBtn.addEventListener('click', () => {
+        const from = document.getElementById('dashboardFromDate').value;
+        const to = document.getElementById('dashboardToDate').value;
+        if (!from || !to) {
+            alert("Please select both from and to dates");
+            return;
+        }
+        loadDashboard('custom', from, to);
+    });
 }
 
 function showSection(sectionId) {
@@ -178,6 +207,7 @@ function showSection(sectionId) {
     } else if (sectionId === 'dashboard') {
         document.getElementById('dashboard-section').classList.remove('d-none');
         loadDashboardStats();
+        loadDashboard();
         // Load DSE data for the dashboard table
         loadGeneric('view_dse', 'dashboard-dse-data', ['did', 'dsename', 'mobile', 'email', 'totalbal']);
     }
@@ -245,13 +275,80 @@ async function loadDashboardStats() {
         document.getElementById('dashboard-credit-cash').textContent = '₹' + (parseFloat(data.credit_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
         document.getElementById('dashboard-credit-pure').textContent = (parseFloat(data.credit_pure) || 0).toFixed(3) + ' g';
         
-        document.getElementById('dashboard-sale-weight').textContent = (parseFloat(data.sale_weight) || 0).toFixed(3) + ' g';
-        
-        document.getElementById('dashboard-payin-cash').textContent = '₹' + (parseFloat(data.payin_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('dashboard-payin-pure').textContent = (parseFloat(data.payin_pure) || 0).toFixed(3) + ' g';
+        // Performance Metrics (Initial load from summary)
+        loadDashboard('month');
+        // New: Load Latest Transactions
+        loadLatestTransactions();
 
     } catch (err) {
         console.error('Error loading dashboard summary:', err);
+    }
+}
+
+async function loadLatestTransactions() {
+    const container = document.getElementById('dashboard-report-results');
+    try {
+        const res = await fetch(`${API_URL}/latest_transactions`);
+        const data = await res.json();
+        
+        if (!data || data.length === 0) {
+            container.innerHTML = '<div class="report-placeholder-sm"><p>No transactions found.</p></div>';
+            return;
+        }
+
+        let html = `
+            <table class="footer-table">
+                <thead>
+                    <tr>
+                        <th>Inv No</th>
+                        <th>Date</th>
+                        <th>Retailer</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        data.forEach(tr => {
+            html += `
+                <tr>
+                    <td>${tr.invno}</td>
+                    <td>${tr.date}</td>
+                    <td>${tr.retailer}</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--primary);">₹${(parseFloat(tr.finaltotal) || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                </tr>
+            `;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (err) {
+        console.error("Latest transactions error:", err);
+        if (container) container.innerHTML = '<p class="text-danger">Error loading latest transactions.</p>';
+    }
+}
+
+async function loadDashboard(filter = null, from = '', to = '') {
+    try {
+        if (!filter) {
+            filter = document.getElementById('timeFilter')?.value || 'month';
+        }
+
+        let url = `${API_URL}/dashboard_data?filter=${filter}`;
+        if (filter === 'today') {
+            const today = new Date().toISOString().split('T')[0];
+            url += `&today=${today}`;
+        }
+        if (from) url += `&from=${from}`;
+        if (to) url += `&to=${to}`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to fetch performance data");
+        const data = await res.json();
+
+        document.getElementById('saleWeight').textContent = (parseFloat(data.sale_weight) || 0).toFixed(3) + ' g';
+        document.getElementById('payinCash').textContent = '₹' + (parseFloat(data.payin_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        document.getElementById('payinPure').textContent = (parseFloat(data.payin_pure) || 0).toFixed(3) + ' g';
+    } catch (err) {
+        console.error("Dashboard Performance Error:", err);
     }
 }
 
@@ -1119,7 +1216,6 @@ function fetchInventoryBalance() {
     const item = document.getElementById("reportStockItem").value;
 
     let queryParams = new URLSearchParams();
-    if (dse) queryParams.append("dse", dse);
     if (item) queryParams.append("item", item);
 
     fetch(`${API_URL}/report_inventory_balance?${queryParams.toString()}`)
@@ -1155,7 +1251,6 @@ function renderInventoryTable(data) {
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>DSE Name</th>
                     <th>Item</th>
                     <th>Weight</th>
                     <th>Count</th>
@@ -1176,7 +1271,6 @@ function renderInventoryTable(data) {
 
         html += `
             <tr>
-                <td>${row.dse || "-"}</td>
                 <td>${row.item || "-"}</td>
                 <td>${wt.toFixed(3)}</td>
                 <td>${ct}</td>
@@ -1190,7 +1284,7 @@ function renderInventoryTable(data) {
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="2">TOTALS</td>
+                    <td colspan="1">TOTALS</td>
                     <td>${totals.weight.toFixed(3)}</td>
                     <td>${totals.count}</td>
                     <td>${totals.silver.toFixed(3)}</td>
@@ -1659,7 +1753,7 @@ function fetchItemSale(from, to) {
 
 // Render Item Sale Table
 function renderItemSaleTable(data) {
-    let totals = { weight: 0 };
+    let totals = { weight: 0, count: 0, amount: 0 };
     
     let html = `
         <table class="data-table">
@@ -1667,6 +1761,8 @@ function renderItemSaleTable(data) {
                 <tr>
                     <th>Item</th>
                     <th>Weight</th>
+                    <th>Count</th>
+                    <th>Amount</th>
                 </tr>
             </thead>
             <tbody>
@@ -1674,12 +1770,19 @@ function renderItemSaleTable(data) {
 
     data.forEach(row => {
         let weight = parseFloat(row.total_weight || 0);
+        let count = parseInt(row.total_count || 0);
+        let amount = parseFloat(row.total_amount || 0);
+
         totals.weight += weight;
+        totals.count += count;
+        totals.amount += amount;
 
         html += `
             <tr>
                 <td>${row.item || "-"}</td>
                 <td>${weight.toFixed(3)}</td>
+                <td>${count}</td>
+                <td>${Math.round(amount).toLocaleString()}</td>
             </tr>
         `;
     });
@@ -1690,6 +1793,8 @@ function renderItemSaleTable(data) {
                 <tr>
                     <td>TOTAL</td>
                     <td>${totals.weight.toFixed(3)}</td>
+                    <td>${totals.count}</td>
+                    <td>${Math.round(totals.amount).toLocaleString()}</td>
                 </tr>
             </tfoot>
         </table>

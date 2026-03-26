@@ -14,7 +14,7 @@ const sql = `
         item, 
         IFNULL(SUM(weight), 0) AS weight, 
         IFNULL(SUM(count), 0) AS count, 
-        IFNULL(SUM(silver), 0) AS silver
+        ROUND(IFNULL(SUM(silver), 0), 3) AS silver
     FROM (
         SELECT s.dse, si.item, IFNULL(si.wt, 0) AS weight, IFNULL(si.count, 0) AS count, IFNULL(si.withcoverwt, 0) AS silver
         FROM stock s 
@@ -34,7 +34,7 @@ const sql = `
         
         UNION ALL
         
-        SELECT i.dse, ii.item, IFNULL(ii.wt, 0) AS weight, IFNULL(ii.count, 0) AS count, IFNULL(ii.withcoverwt, 0) AS silver
+        SELECT i.dse, ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
         FROM inventory i 
         JOIN inventoryitem ii ON i.inventid = ii.inventid
     ) t

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Jewellery App</title>
-    <link rel="stylesheet" href="css/style.css?v=6">
+    <link rel="stylesheet" href="css/style.css?v=12">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -54,62 +54,88 @@
 
         <!-- Dashboard Section -->
         <div id="dashboard-section" class="section-content">
-            <div class="stats-grid dashboard-summary-grid">
-                <!-- Original Stats -->
-                <div class="stat-card">
-                    <h3>Total Sales Value</h3>
-                    <div class="value" id="stat-total-sales">-</div>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Orders</h3>
-                    <div class="value" id="stat-total-orders">-</div>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Users</h3>
-                    <div class="value" id="stat-total-users">-</div>
-                </div>
-
-                <!-- New Metrics -->
-                <div class="stat-card">
+            <div class="dashboard-grid">
+                <div class="stat-card dashboard-card">
                     <h3>Cash in Hand</h3>
                     <div class="value" id="dashboard-cash-in-hand">-</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card dashboard-card">
                     <h3>Cash in Office</h3>
                     <div class="value" id="dashboard-cash-in-office">-</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card dashboard-card">
                     <h3>Pure Balance</h3>
                     <div class="value" id="dashboard-pure-balance">-</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card dashboard-card">
                     <h3>Credit</h3>
                     <div class="value-group">
                         <div class="sub-value">Cash: <span id="dashboard-credit-cash">-</span></div>
                         <div class="sub-value">Pure: <span id="dashboard-credit-pure">-</span></div>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <h3>Sale (Weight)</h3>
-                    <div class="value" id="dashboard-sale-weight">-</div>
+                <div class="stat-card dashboard-card">
+                    <h3>Total Sales Value</h3>
+                    <div class="value" id="stat-total-sales">-</div>
                 </div>
-                <div class="stat-card">
-                    <h3>Payin</h3>
-                    <div class="value-group">
-                        <div class="sub-value">Cash: <span id="dashboard-payin-cash">-</span></div>
-                        <div class="sub-value">Pure: <span id="dashboard-payin-pure">-</span></div>
+                <div class="stat-card dashboard-card">
+                    <h3>Total Orders</h3>
+                    <div class="value" id="stat-total-orders">-</div>
+                </div>
+                <div class="stat-card dashboard-card">
+                    <h3>Total Users</h3>
+                    <div class="value" id="stat-total-users">-</div>
+                </div>
+            </div>
+
+            <hr class="dashboard-divider">
+
+            <div class="performance-section">
+                <h2 class="section-title">Sales & Payin Overview</h2>
+                
+                <div class="performance-filter-container mb-4">
+                    <div class="filter-group">
+                        <label for="timeFilter"><i class="fas fa-calendar-alt"></i> Period:</label>
+                        <select id="timeFilter" class="filter-select">
+                            <option value="all">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month" selected>This Month</option>
+                            <option value="year">This Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                    <div id="dashboardCustomRange" class="filter-group d-none">
+                        <input type="date" id="dashboardFromDate" class="filter-date">
+                        <span>to</span>
+                        <input type="date" id="dashboardToDate" class="filter-date">
+                        <button id="applyCustomFilter" class="btn-refresh-sm"><i class="fas fa-check"></i></button>
+                    </div>
+                </div>
+
+                <div class="performance-grid">
+                    <div class="stat-card dashboard-card">
+                        <h3>Sale (Weight)</h3>
+                        <div class="value" id="saleWeight">-</div>
+                    </div>
+                    <div class="stat-card dashboard-card">
+                        <h3>Payin</h3>
+                        <div class="value-group">
+                            <div class="sub-value">Cash: <span id="payinCash">-</span></div>
+                            <div class="sub-value">Pure: <span id="payinPure">-</span></div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="dashboard-flex-row">
+            <div class="dashboard-footer-grid">
                 <!-- Left Table: Report Result -->
-                <div class="dashboard-card report-card">
+                <div class="footer-card latest-report-card">
                     <div class="card-header">
-                        <h3>Latest Report</h3>
+                        <h3><i class="fas fa-history"></i> Latest Report</h3>
                     </div>
                     <div id="dashboard-report-results" class="data-table-container">
-                        <div class="report-placeholder">
+                        <div class="report-placeholder-sm">
                             <i class="fas fa-chart-line"></i>
                             <p>Generate a report to see data here.</p>
                         </div>
@@ -117,22 +143,22 @@
                 </div>
 
                 <!-- Right Table: DSE Records -->
-                <div class="dashboard-card dse-card">
+                <div class="footer-card dse-card">
                     <div class="card-header">
-                        <h3>DSE Records</h3>
+                        <h3><i class="fas fa-user-tie"></i> DSE Records</h3>
                         <div class="header-actions">
                             <button
                                 onclick="loadGeneric('view_dse', 'dashboard-dse-data', ['did', 'dsename', 'mobile', 'email', 'totalbal'])"
                                 class="refresh-btn">
-                                <i class="fas fa-sync-alt"></i> Refresh
+                                <i class="fas fa-sync-alt"></i>
                             </button>
                             <button onclick="exportToExcel('view_dse')" class="export-btn">
-                                <i class="fas fa-file-excel"></i> Export
+                                <i class="fas fa-file-excel"></i>
                             </button>
                         </div>
                     </div>
                     <div id="dashboard-dse-data" class="data-table-container">
-                        <p class="text-muted">Loading DSE data... wait</p>
+                        <p class="text-muted p-4">Loading DSE data... wait</p>
                     </div>
                 </div>
             </div>
@@ -574,7 +600,8 @@
 
     </div>
 
-    <script src="js/app.js?v=6"></script>
+    <link rel="stylesheet" href="css/style.css?v=12">
+    <script src="js/app.js?v=12"></script>
 </body>
 
 </html>

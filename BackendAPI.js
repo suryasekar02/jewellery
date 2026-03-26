@@ -15,20 +15,18 @@ app.use((req, res, next) => {
     next();
 });
 
-const db = mysql.createConnection({
+const db = mysql.createPool({
   host: "yamabiko.proxy.rlwy.net",
   user: "root",
   password: "hRirQGrleAlWWpWnThZottwHolrrGaJF",
   database: "railway",
-  port: 38563
+  port: 38563,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect((err) => {
-    if (err) {
-        throw err;
-    }
-    console.log('MySQL connected...');
-});
+console.log('MySQL Pool created...');
 
 // Helper to generate next ID (FIXED VERSION)
 function getNextId(table, column, prefix, callback) {
@@ -2972,40 +2970,37 @@ app.get('/report_dse_sale', (req, res) => {
 
     const sql = `
         SELECT 
-            d.dsename,
-            SUM(IFNULL(report_data.weight, 0)) AS total_weight,
-            SUM(IFNULL(report_data.payin, 0)) AS total_payin,
-            SUM(IFNULL(report_data.pure, 0)) AS total_pure
-        FROM dse d
-        LEFT JOIN (
+            t.dsename,
+            ROUND(IFNULL(SUM(t.weight), 0), 3) AS total_weight,
+            IFNULL(SUM(t.payin), 0) AS total_payin,
+            ROUND(IFNULL(SUM(t.pure), 0), 3) AS total_pure
+        FROM (
             -- Sales Weight
-            SELECT r.dsename, SUM(IFNULL(si.weight, 0)) AS weight, 0 AS payin, 0 AS pure
+            SELECT s.dse AS dsename, SUM(IFNULL(si.weight, 0)) AS weight, 0 AS payin, 0 AS pure
             FROM salesitem si
             JOIN sales s ON si.invno = s.invno
-            JOIN retailer r ON s.retailer = r.retailername
-            WHERE s.date BETWEEN ? AND ?
-            GROUP BY r.dsename
+            WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
+            GROUP BY s.dse
 
             UNION ALL
 
             -- Pure MC Weight
-            SELECT r.dsename, SUM(IFNULL(pmi.weight, 0)) AS weight, 0 AS payin, 0 AS pure
+            SELECT pm.dsename, SUM(IFNULL(pmi.weight, 0)) AS weight, 0 AS payin, 0 AS pure
             FROM puremcitem pmi
             JOIN puremc pm ON pmi.pureid = pm.pureid
-            JOIN retailer r ON pm.retailername = r.retailername
-            WHERE pm.date BETWEEN ? AND ?
-            GROUP BY r.dsename
+            WHERE STR_TO_DATE(pm.date, '%d/%m/%Y') BETWEEN ? AND ?
+            GROUP BY pm.dsename
 
             UNION ALL
 
             -- Payments
-            SELECT dsename, 0 AS weight, SUM(IFNULL(amount, 0)) AS payin, SUM(IFNULL(pure, 0)) AS pure
-            FROM retailerpayment
-            WHERE date BETWEEN ? AND ?
-            GROUP BY dsename
-        ) AS report_data ON d.dsename = report_data.dsename
-        GROUP BY d.dsename
-        ORDER BY d.dsename
+            SELECT rp.dsename, 0 AS weight, SUM(IFNULL(rp.amount, 0)) AS payin, SUM(IFNULL(rp.pure, 0)) AS pure
+            FROM retailerpayment rp
+            WHERE DATE(rp.date) BETWEEN ? AND ?
+            GROUP BY rp.dsename
+        ) AS t
+        GROUP BY t.dsename
+        ORDER BY t.dsename
     `;
 
     const params = [from, to, from, to, from, to];
@@ -3029,30 +3024,18 @@ app.get('/report_item_sale', (req, res) => {
 
     const sql = `
         SELECT 
-            report_data.item,
-            SUM(IFNULL(report_data.weight, 0)) AS total_weight
-        FROM (
-            -- Sales Items Weight
-            SELECT si.item, SUM(IFNULL(si.weight, 0)) AS weight
-            FROM salesitem si
-            JOIN sales s ON si.invno = s.invno
-            WHERE s.date BETWEEN ? AND ?
-            GROUP BY si.item
-
-            UNION ALL
-
-            -- Pure MC Items Weight
-            SELECT pmi.item, SUM(IFNULL(pmi.weight, 0)) AS weight
-            FROM puremcitem pmi
-            JOIN puremc pm ON pmi.pureid = pm.pureid
-            WHERE pm.date BETWEEN ? AND ?
-            GROUP BY pmi.item
-        ) AS report_data
-        GROUP BY report_data.item
-        ORDER BY report_data.item
+            si.item,
+            ROUND(IFNULL(SUM(si.totalweight), 0), 3) AS total_weight,
+            IFNULL(SUM(si.count), 0) AS total_count,
+            ROUND(IFNULL(SUM(si.total), 0), 2) AS total_amount
+        FROM salesitem si
+        JOIN sales s ON si.invno = s.invno
+        WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
+        GROUP BY si.item
+        ORDER BY si.item
     `;
 
-    const params = [from, to, from, to];
+    const params = [from, to];
 
     db.query(sql, params, (err, results) => {
         if (err) {
@@ -3086,7 +3069,7 @@ app.get('/report_dse_stock', (req, res) => {
             item, 
             IFNULL(SUM(weight), 0) AS weight, 
             IFNULL(SUM(count), 0) AS count, 
-            IFNULL(SUM(silver), 0) AS silver
+            ROUND(IFNULL(SUM(silver), 0), 3) AS silver
         FROM (
             SELECT s.dse, si.item, IFNULL(si.wt, 0) AS weight, IFNULL(si.count, 0) AS count, IFNULL(si.withcoverwt, 0) AS silver
             FROM stock s 
@@ -3106,7 +3089,7 @@ app.get('/report_dse_stock', (req, res) => {
 
             UNION ALL
             
-            SELECT i.dse, ii.item, IFNULL(ii.wt, 0) AS weight, IFNULL(ii.count, 0) AS count, IFNULL(ii.withcoverwt, 0) AS silver
+            SELECT i.dse, ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
             FROM inventory i 
             JOIN inventoryitem ii ON i.inventid = ii.inventid
         ) t
@@ -3127,14 +3110,10 @@ app.get('/report_dse_stock', (req, res) => {
 
 
 app.get('/report_inventory_balance', (req, res) => {
-    const { dse, item } = req.query;
+    const { item } = req.query;
     let whereClauses = [];
     let params = [];
 
-    if (dse) {
-        whereClauses.push("t.dse = ?");
-        params.push(dse);
-    }
     if (item) {
         whereClauses.push("t.item = ?");
         params.push(item);
@@ -3144,25 +3123,24 @@ app.get('/report_inventory_balance', (req, res) => {
 
     const sql = `
         SELECT 
-            dse, 
             item, 
-            IFNULL(SUM(weight), 0) AS weight, 
+            ROUND(IFNULL(SUM(weight), 0), 3) AS weight, 
             IFNULL(SUM(count), 0) AS count, 
-            IFNULL(SUM(silver), 0) AS silver
+            ROUND(IFNULL(SUM(silver), 0), 3) AS silver
         FROM (
-            SELECT i.dse, ii.item, IFNULL(ii.wt, 0) AS weight, IFNULL(ii.count, 0) AS count, IFNULL(ii.withcoverwt, 0) AS silver
-            FROM inventory i 
-            JOIN inventoryitem ii ON i.inventid = ii.inventid
+            SELECT si.item, IFNULL(si.wt, 0) AS weight, IFNULL(si.count, 0) AS count, IFNULL(si.withcoverwt, 0) AS silver
+            FROM stock s 
+            JOIN stocksitem si ON s.stockid = si.stockid
             
             UNION ALL
             
-            SELECT s.dse, si.item, -IFNULL(si.wt, 0) AS weight, -IFNULL(si.count, 0) AS count, -IFNULL(si.withcoverwt, 0) AS silver
-            FROM stock s 
-            JOIN stocksitem si ON s.stockid = si.stockid
+            SELECT ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
+            FROM inventory i 
+            JOIN inventoryitem ii ON i.inventid = ii.inventid
         ) t
         ${whereStr}
-        GROUP BY dse, item
-        ORDER BY dse, item
+        GROUP BY item
+        ORDER BY item
     `;
 
     db.query(sql, params, (err, results) => {
@@ -3303,63 +3281,74 @@ app.get('/report_receive_balance', (req, res) => {
 
 app.get('/dashboard_summary', (req, res) => {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const firstDayStr = firstDay.toISOString().split('T')[0];
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const sql = `
         SELECT
-            -- 1. CASH IN HAND
+            -- 1. CASH IN HAND (Fixed Month)
             (IFNULL((
                 SELECT SUM(IF(LOWER(mode) IN ('cash', 'gpay'), amount, 0)) - SUM(IFNULL(purecash, 0))
                 FROM retailerpayment
-                WHERE date BETWEEN ? AND ?
+                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) - 
             IFNULL((
-                SELECT SUM(amount) FROM expenses WHERE date BETWEEN ? AND ?
+                SELECT SUM(amount) FROM expenses 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0) -
             IFNULL((
-                SELECT SUM(mc) FROM partypayout WHERE date BETWEEN ? AND ?
+                SELECT SUM(mc) FROM partypayout 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0)) AS cash_in_hand,
 
-            -- 2. CASH IN OFFICE
+            -- 2. CASH IN OFFICE (Fixed Month)
             IFNULL((
                 SELECT SUM(IF(LOWER(mode) = 'cash', amount, 0)) - SUM(IF(LOWER(mode) = 'office', amount, 0))
                 FROM payment
-                WHERE date BETWEEN ? AND ?
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0) AS cash_in_office,
 
-            -- 3. PURE BALANCE
+            -- 3. PURE BALANCE (Fixed Month)
             (IFNULL((
-                SELECT SUM(pure) FROM expenses WHERE date BETWEEN ? AND ?
+                SELECT SUM(pure) FROM expenses 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0) +
             IFNULL((
-                SELECT SUM(silverweight) FROM retailerpayment WHERE date BETWEEN ? AND ?
+                SELECT SUM(silverweight) FROM retailerpayment 
+                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
-                SELECT SUM(pure) FROM retailerpayment WHERE date BETWEEN ? AND ?
+                SELECT SUM(pure) FROM retailerpayment 
+                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
-                SELECT SUM(pure) FROM partypayout WHERE date BETWEEN ? AND ?
+                SELECT SUM(pure) FROM partypayout 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0)) AS pure_balance,
 
-            -- 4. SALE (Monthly weight)
+            -- 4. SALE (Performance - Default Month)
             (IFNULL((
-                SELECT SUM(si.totalweight) FROM salesitem si JOIN sales s ON si.invno = s.invno WHERE s.date BETWEEN ? AND ?
+                SELECT SUM(si.totalweight) FROM salesitem si 
+                JOIN sales s ON si.invno = s.invno 
+                WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0) +
             IFNULL((
-                SELECT SUM(pmi.weight) FROM puremcitem pmi JOIN puremc pm ON pmi.pureid = pm.pureid WHERE pm.date BETWEEN ? AND ?
+                SELECT SUM(pmi.weight) FROM puremcitem pmi 
+                JOIN puremc pm ON pmi.pureid = pm.pureid 
+                WHERE STR_TO_DATE(pm.date, '%d/%m/%Y') BETWEEN ? AND ?
             ), 0)) AS sale_weight,
 
-            -- 5. PAYIN
+            -- 5. PAYIN (Performance - Default Month)
             IFNULL((
-                SELECT SUM(amount) FROM retailerpayment WHERE date BETWEEN ? AND ?
+                SELECT SUM(amount) FROM retailerpayment 
+                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) AS payin_cash,
             IFNULL((
-                SELECT SUM(silverweight + pure) FROM retailerpayment WHERE date BETWEEN ? AND ?
+                SELECT SUM(silverweight + pure) FROM retailerpayment 
+                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) AS payin_pure,
 
-            -- 6. CREDIT (Cumulative)
+            -- 6. CREDIT (Cumulative - All Time)
             (IFNULL((SELECT SUM(openbalance) FROM retailer), 0) +
             IFNULL((SELECT SUM(finaltotal) FROM sales), 0) -
             IFNULL((SELECT SUM(totalamount) FROM puremcitem), 0) -
@@ -3368,18 +3357,25 @@ app.get('/dashboard_summary', (req, res) => {
             (IFNULL((SELECT SUM(pure) FROM puremcitem), 0) -
             IFNULL((SELECT SUM(pure) FROM retailerpayment), 0))) AS credit_pure,
 
-            -- 7. ORIGINAL STATS
-            IFNULL((SELECT SUM(finaltotal) FROM sales), 0) AS total_sales_value,
-            IFNULL((SELECT COUNT(*) FROM sales), 0) AS total_orders,
+            -- 7. ORIGINAL STATS (Static Month)
+            IFNULL((
+                SELECT SUM(finaltotal) FROM sales 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+            ), 0) AS total_sales_value,
+            IFNULL((
+                SELECT COUNT(*) FROM sales 
+                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+            ), 0) AS total_orders,
             IFNULL((SELECT COUNT(*) FROM user), 0) AS total_users
     `;
 
     const params = [
-        firstDayStr, lastDay, firstDayStr, lastDay, firstDayStr, lastDay, // Cash in hand
-        firstDayStr, lastDay, // Cash in office
-        firstDayStr, lastDay, firstDayStr, lastDay, firstDayStr, lastDay, firstDayStr, lastDay, // Pure balance
-        firstDayStr, lastDay, firstDayStr, lastDay, // Sale
-        firstDayStr, lastDay, firstDayStr, lastDay // Payin
+        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Cash in hand
+        monthStart, monthEnd, // Cash in office
+        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure balance
+        monthStart, monthEnd, monthStart, monthEnd, // Sale
+        monthStart, monthEnd, monthStart, monthEnd, // Payin
+        monthStart, monthEnd, monthStart, monthEnd // Original Stats
     ];
 
     db.query(sql, params, (err, results) => {
@@ -3388,6 +3384,91 @@ app.get('/dashboard_summary', (req, res) => {
             return res.status(500).json({ error: "Database error", details: err.message });
         }
         res.json(results[0]);
+    });
+});
+
+app.get('/dashboard_data', (req, res) => {
+    const filter = req.query.filter;
+    const today = req.query.today || new Date().toISOString().split('T')[0];
+    
+    let saleCondition = "1=1";
+    let payCondition = "1=1";
+    
+    // sale date is DD/MM/YYYY
+    const sDate = "STR_TO_DATE(s.date, '%d/%m/%Y')";
+    // retailerpayment date is YYYY-MM-DD
+    const rpDate = "DATE(rp.date)";
+
+    if (filter === "today") {
+        saleCondition = `DATE(${sDate}) = '${today}'`;
+        payCondition = `${rpDate} = '${today}'`;
+    } else if (filter === "week") {
+        saleCondition = `YEARWEEK(${sDate}, 1) = YEARWEEK('${today}', 1)`;
+        payCondition = `YEARWEEK(${rpDate}, 1) = YEARWEEK('${today}', 1)`;
+    } else if (filter === "month") {
+        saleCondition = `MONTH(${sDate}) = MONTH('${today}') AND YEAR(${sDate}) = YEAR('${today}')`;
+        payCondition = `MONTH(${rpDate}) = MONTH('${today}') AND YEAR(${rpDate}) = YEAR('${today}')`;
+    } else if (filter === "year") {
+        saleCondition = `YEAR(${sDate}) = YEAR('${today}')`;
+        payCondition = `YEAR(${rpDate}) = YEAR('${today}')`;
+    } else if (filter === "custom" || filter === "range") {
+        const { from, to } = req.query;
+        if (from && to) {
+            saleCondition = `DATE(${sDate}) BETWEEN '${from}' AND '${to}'`;
+            payCondition = `${rpDate} BETWEEN '${from}' AND '${to}'`;
+        }
+    }
+
+    const sqlSale = `
+        SELECT ROUND(IFNULL(SUM(si.totalweight), 0), 3) AS sale
+        FROM sales s
+        JOIN salesitem si ON s.invno = si.invno
+        WHERE ${saleCondition}
+    `;
+
+    const sqlPayin = `
+        SELECT 
+            IFNULL(SUM(rp.amount), 0) AS cash,
+            ROUND(IFNULL(SUM(rp.pure), 0), 3) AS pure
+        FROM retailerpayment rp
+        WHERE ${payCondition}
+    `;
+
+    // Execute both queries
+    db.query(sqlSale, (err, saleResult) => {
+        if (err) {
+            console.error("Dashboard Sale Data Error:", err);
+            return res.status(500).json({ error: "Database error", details: err.message });
+        }
+        
+        db.query(sqlPayin, (err, payinResult) => {
+            if (err) {
+                console.error("Dashboard Payin Data Error:", err);
+                return res.status(500).json({ error: "Database error", details: err.message });
+            }
+            
+            res.json({
+                sale_weight: saleResult[0].sale,
+                payin_cash: payinResult[0].cash,
+                payin_pure: payinResult[0].pure
+            });
+        });
+    });
+});
+
+app.get('/latest_transactions', (req, res) => {
+    const sql = `
+        SELECT invno, date, retailer, finaltotal 
+        FROM sales 
+        ORDER BY STR_TO_DATE(date, '%d/%m/%Y') DESC, invno DESC 
+        LIMIT 10
+    `;
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
     });
 });
 
