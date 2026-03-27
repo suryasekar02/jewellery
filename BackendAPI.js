@@ -15,18 +15,22 @@ app.use((req, res, next) => {
     next();
 });
 
-const db = mysql.createPool({
+const db = mysql.createConnection({
   host: "yamabiko.proxy.rlwy.net",
   user: "root",
   password: "hRirQGrleAlWWpWnThZottwHolrrGaJF",
   database: "railway",
-  port: 38563,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+  port: 38563
 });
 
-console.log('MySQL Pool created...');
+db.connect((err) => {
+    if (err) {
+        console.error('Error connecting to MySQL:', err);
+        return;
+    }
+    console.log('Connected to MySQL...');
+});
+
 
 // Helper to generate next ID (FIXED VERSION)
 function getNextId(table, column, prefix, callback) {
@@ -1708,7 +1712,17 @@ app.post('/add_retailer_payment', (req, res) => {
                 });
             }
 
-            // Update Retailer Balance
+            db.commit((err) => {
+                if (err) {
+                    return db.rollback(() => {
+                        console.error("Commit Error:", err);
+                        res.status(500).send('Error completing transaction');
+                    });
+                }
+                res.send('Retailer Payment added successfully');
+            });
+
+            // Update Retailer Balance (Commented out by user)
             /*
             let sqlUpdateRetailer = 'UPDATE retailer SET openbalance = openbalance - ? WHERE retailername = ?';
             db.query(sqlUpdateRetailer, [payment.amount, payment.retailername], (err, result) => {
@@ -1732,6 +1746,7 @@ app.post('/add_retailer_payment', (req, res) => {
         });
     });
 });
+
 
 app.get('/view_retailer_payment', (req, res) => {
     let userid = req.query.userid;
