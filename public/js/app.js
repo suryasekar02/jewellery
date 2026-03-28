@@ -103,9 +103,12 @@ function exportToExcel(type) {
                     detailData.push(detailHeaders);
                 }
  
-                // Extract Body Rows (Skip footers)
+                // Extract Body Rows (Skip footers and repetitive headers)
                 const bodyRows = Array.from(nestedTable.querySelectorAll('tbody tr'));
                 bodyRows.forEach(tr => {
+                    const firstCellText = (tr.cells[0]?.innerText || "").trim().toUpperCase();
+                    if (["ITEM", "TOTAL", "REF ID"].includes(firstCellText)) return;
+                    
                     const rowData = [parentId, ...Array.from(tr.cells).map(td => td.innerText.trim())];
                     detailData.push(rowData);
                 });
@@ -786,7 +789,8 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         'Description': 'text-left', 'Particulars': 'text-left', 'Pay Mode': 'text-left',
         'Mode': 'text-left', 'Payment Mode': 'text-left', 'Silver Weight': 'text-right col-narrow',
         'Pure': 'text-right col-narrow', 'Pure Cash': 'text-right', 'Party': 'text-left col-name',
-        'Party Name': 'text-left col-name', 'Payout No': 'col-id text-left', 'MC': 'text-right'
+        'Party Name': 'text-left col-name', 'Payout No': 'col-id text-left', 'MC': 'text-right',
+        'Weight': 'text-right', 'Count': 'text-right', 'CoverWt': 'text-right', 'Item': 'text-left'
     };
 
     let html = '<table class="data-table"><thead><tr>';
@@ -806,6 +810,10 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     let salesTotalSum = 0;
     let pureTotalSum = 0;
     let mcTotalSum = 0;
+    let grandStockTotal = { weight: 0, count: 0, silver: 0, cover: 0 };
+    let grandInventoryTotal = { weight: 0, count: 0, silver: 0, cover: 0 };
+    let grandPurchaseTotal = { weight: 0, count: 0, mc: 0, pure: 0, total: 0 };
+    let grandPureMCTotal = { weight: 0, count: 0, mc: 0, pure: 0, total: 0 };
     let expensesTotal = { amount: 0, pure: 0 };
 
     data.forEach((row, index) => {
@@ -827,12 +835,72 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         } else if (type === 'retailer_payment') {
             html += `<td class="text-left">${row.date}</td><td class="text-left col-dsename">${row.dsename}</td><td class="text-left col-retailer">${row.retailername}</td><td class="text-right">₹${row.amount}</td><td class="text-left">${row.mode}</td><td class="text-right col-narrow">${row.silverweight || 0}</td><td class="text-right col-narrow">${parseFloat(row.pure || 0).toFixed(3)}</td><td class="text-right">₹${parseFloat(row.purecash || 0).toFixed(2)}</td>`;
         } else if (type === 'stock') {
+            let wtSum = 0, ctSum = 0, svSum = 0, cvSum = 0;
+            if (row.items) {
+                row.items.forEach(it => {
+                    const gwt = parseFloat(it.wt || it.weight || 0);
+                    const nwt = parseFloat(it.withcoverwt || it.cover || it.coverwt || 0);
+                    wtSum += gwt;
+                    ctSum += parseInt(it.count || 0);
+                    svSum += nwt;
+                    cvSum += Math.max(0, gwt - nwt);
+                });
+            }
+            grandStockTotal.weight += wtSum;
+            grandStockTotal.count += ctSum;
+            grandStockTotal.silver += svSum;
+            grandStockTotal.cover += cvSum;
             html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.stockid}</td><td class="text-left col-dsename">${row.dse}</td>`;
         } else if (type === 'inventory') {
+            let wtSum = 0, ctSum = 0, svSum = 0, cvSum = 0;
+            if (row.items) {
+                row.items.forEach(it => {
+                    const gwt = parseFloat(it.wt || it.weight || 0);
+                    const nwt = parseFloat(it.withcoverwt || it.cover || it.coverwt || 0);
+                    wtSum += gwt;
+                    ctSum += parseInt(it.count || 0);
+                    svSum += nwt;
+                    cvSum += Math.max(0, gwt - nwt);
+                });
+            }
+            grandInventoryTotal.weight += wtSum;
+            grandInventoryTotal.count += ctSum;
+            grandInventoryTotal.silver += svSum;
+            grandInventoryTotal.cover += cvSum;
             html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.inventid}</td><td class="text-left col-dsename">${row.dse}</td>`;
         } else if (type === 'purchase') {
+            let wtS = 0, ctS = 0, mcS = 0, prS = 0, totS = 0;
+            if (row.items) {
+                row.items.forEach(it => {
+                    wtS += parseFloat(it.wt || it.weight || 0);
+                    ctS += parseInt(it.count || 0);
+                    mcS += parseFloat(it.mc || 0);
+                    prS += parseFloat(it.pure || 0);
+                    totS += parseFloat(it.total || it.totalamount || 0);
+                });
+            }
+            grandPurchaseTotal.weight += wtS;
+            grandPurchaseTotal.count += ctS;
+            grandPurchaseTotal.mc += mcS;
+            grandPurchaseTotal.pure += prS;
+            grandPurchaseTotal.total += totS;
             html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.purchaseid}</td>${isOffice ? '' : `<td class="text-left col-name">${row.party}</td>`}`;
         } else if (type === 'puremc') {
+            let wtS = 0, ctS = 0, mcS = 0, prS = 0, totS = 0;
+            if (row.items) {
+                row.items.forEach(it => {
+                    wtS += parseFloat(it.wt || it.weight || 0);
+                    ctS += parseInt(it.count || 0);
+                    mcS += parseFloat(it.mc || 0);
+                    prS += parseFloat(it.pure || 0);
+                    totS += parseFloat(it.total || it.totalamount || 0);
+                });
+            }
+            grandPureMCTotal.weight += wtS;
+            grandPureMCTotal.count += ctS;
+            grandPureMCTotal.mc += mcS;
+            grandPureMCTotal.pure += prS;
+            grandPureMCTotal.total += totS;
             html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.pureid}</td><td class="text-left col-dsename">${row.dsename}</td><td class="text-left col-retailer">${row.retailername}</td>`;
         } else if (type === 'expenses') {
             const expAmt = parseFloat(row.amount || 0);
@@ -934,7 +1002,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     if (type === 'petrol' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
-            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                 <td colspan="3" class="text-left">TOTAL</td>
                 <td class="text-right">₹${petrolTotal.toFixed(2)}</td>
             </tr>
@@ -942,7 +1010,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     } else if (type === 'expenses' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
-            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                 <td colspan="4" class="text-left">TOTAL</td>
                 <td class="text-right">₹${expensesTotal.amount.toFixed(2)}</td>
                 <td class="text-right col-narrow">${expensesTotal.pure.toFixed(3)}</td>
@@ -952,7 +1020,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     } else if (type === 'payment' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
-            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                 <td colspan="3" class="text-left">TOTAL</td>
                 <td class="text-right">₹${paymentTotal.toFixed(2)}</td>
             </tr>
@@ -960,7 +1028,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     } else if (type === 'sales' && data.length > 1) {
         html += `</tbody>
         <tfoot class="total-row">
-            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                 <td colspan="2" class="text-left">TOTAL</td>
                 <td class="text-right">₹${salesTotalSum.toLocaleString()}</td>
             </tr>
@@ -968,10 +1036,54 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     } else if (type === 'party_payout' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
-            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                 <td colspan="2" class="text-left">TOTAL</td>
                 <td class="text-right col-narrow">${pureTotalSum.toFixed(3)}</td>
                 <td class="text-right">${mcTotalSum.toLocaleString()}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'stock' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                <td class="text-left"><span style="color: #6366f1;">TOTAL</span></td>
+                <td class="text-right">Weight: ${grandStockTotal.weight.toFixed(3)}</td>
+                <td class="text-right">Count: ${grandStockTotal.count}</td>
+                <td class="text-right">Silver: ${grandStockTotal.silver.toFixed(3)} / Cover: ${grandStockTotal.cover.toFixed(3)}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'inventory' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                <td class="text-left"><span style="color: #6366f1;">TOTAL</span></td>
+                <td class="text-right">Weight: ${grandInventoryTotal.weight.toFixed(3)}</td>
+                <td class="text-right">Count: ${grandInventoryTotal.count}</td>
+                <td class="text-right">Silver: ${grandInventoryTotal.silver.toFixed(3)} / Cover: ${grandInventoryTotal.cover.toFixed(3)}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'purchase' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                <td class="text-left"><span style="color: #6366f1;">TOTAL</span></td>
+                <td class="text-right">Weight: ${grandPurchaseTotal.weight.toFixed(3)}</td>
+                ${isOffice ? '' : `<td class="text-right">Count: ${grandPurchaseTotal.count}</td>`}
+                <td class="text-right">
+                    ${isOffice ? `Count: ${grandPurchaseTotal.count} | ` : ''}
+                    MC: ₹${grandPurchaseTotal.mc.toLocaleString()} | Pure: ${grandPurchaseTotal.pure.toFixed(3)} | total: ₹${grandPurchaseTotal.total.toLocaleString()}
+                </td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'puremc' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                <td class="text-left"><span style="color: #6366f1;">TOTAL</span></td>
+                <td class="text-right">Weight: ${grandPureMCTotal.weight.toFixed(3)}</td>
+                <td class="text-right">Count: ${grandPureMCTotal.count}</td>
+                <td class="text-right">MC: ₹${grandPureMCTotal.mc.toLocaleString()} | Pure: ${grandPureMCTotal.pure.toFixed(3)}</td>
+                <td class="text-right">Total: ₹${grandPureMCTotal.total.toLocaleString()}</td>
             </tr>
         </tfoot>`;
     } else {
