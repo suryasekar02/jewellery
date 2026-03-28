@@ -62,25 +62,36 @@ function getNextId(table, column, prefix, callback) {
     });
 }
 app.post('/add_dse', (req, res) => {
-    getNextId('dse', 'did', 'D', (err, nextId) => {
-        if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+    let dsename = req.body.dsename;
+    if (!dsename) return res.status(400).send('DSE Name is required');
 
-        let dse = {
-            did: nextId,
-            dsename: req.body.dsename,
-            mobile: req.body.mobile,
-            email: req.body.email,
-            openbalance: req.body.openbalance,
-            totalbal: req.body.totalbal !== undefined ? req.body.totalbal : req.body.openbalance
-        };
-        let sql = 'INSERT INTO dse SET ?';
-        db.query(sql, dse, (err, result) => {
-            if (err) {
-                console.error(err);
-                res.status(500).send('Error inserting data');
-                return;
-            }
-            res.send('DSE added...');
+    // Case-insensitive check for existing DSE name
+    db.query('SELECT * FROM dse WHERE LOWER(dsename) = LOWER(?)', [dsename], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking DSE'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('DSE Name already exists');
+        }
+
+        getNextId('dse', 'did', 'D', (err, nextId) => {
+            if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+
+            let dse = {
+                did: nextId,
+                dsename: req.body.dsename,
+                mobile: req.body.mobile,
+                email: req.body.email,
+                openbalance: req.body.openbalance,
+                totalbal: req.body.totalbal !== undefined ? req.body.totalbal : req.body.openbalance
+            };
+            let sql = 'INSERT INTO dse SET ?';
+            db.query(sql, dse, (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).send('Error inserting data');
+                    return;
+                }
+                res.send('DSE added...');
+            });
         });
     });
 });
@@ -91,7 +102,8 @@ app.post('/add_user', (req, res) => {
         return res.status(400).send('Login name is required');
     }
 
-    db.query('SELECT * FROM user WHERE loginname = ?', [loginname], (err, results) => {
+    // Case-insensitive check for existing login name
+    db.query('SELECT * FROM user WHERE LOWER(loginname) = LOWER(?)', [loginname], (err, results) => {
         if (err) { console.error(err); res.status(500).send('Error checking user'); return; }
         if (results.length > 0) {
             return res.status(409).send('Login name already exists');
@@ -304,21 +316,32 @@ app.post('/delete_dse', (req, res) => {
 });
 
 app.post('/add_category', (req, res) => {
-    getNextId('category', 'cid', 'C', (err, nextId) => {
-        if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+    let categoryname = req.body.categoryname || req.body.categoryName;
+    if (!categoryname) return res.status(400).send('Category Name is required');
 
-        let category = {
-            cid: nextId,
-            categoryname: req.body.categoryname || req.body.categoryName
-        };
-        let sql = 'INSERT INTO category SET ?';
-        db.query(sql, category, (err, result) => {
-            if (err) {
-                console.error(err);
-                res.status(500).send('Error inserting category');
-                return;
-            }
-            res.send('Category added...');
+    // Case-insensitive check for existing category
+    db.query('SELECT * FROM category WHERE LOWER(categoryname) = LOWER(?)', [categoryname], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking category'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('Category Name already exists');
+        }
+
+        getNextId('category', 'cid', 'C', (err, nextId) => {
+            if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+
+            let category = {
+                cid: nextId,
+                categoryname: categoryname
+            };
+            let sql = 'INSERT INTO category SET ?';
+            db.query(sql, category, (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).send('Error inserting category');
+                    return;
+                }
+                res.send('Category added...');
+            });
         });
     });
 });
@@ -368,37 +391,47 @@ app.post('/delete_category', (req, res) => {
 });
 
 app.post('/add_retailer', (req, res) => {
-    getNextId('retailer', 'rid', 'R', (err, nextId) => {
+    let retailername = req.body.retailername;
+    if (!retailername) return res.status(400).send('Retailer Name is required');
 
-        if (err) {
-            console.error(err);
-            return res.status(500).send('Error generating ID');
+    // Case-insensitive check for existing retailer
+    db.query('SELECT * FROM retailer WHERE LOWER(retailername) = LOWER(?)', [retailername], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking retailer'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('Retailer Name already exists');
         }
 
-        let retailer = {
-            rid: nextId,
-            dsename: req.body.dsename,
-            retailername: req.body.retailername,
-            mobile: req.body.mobile,
-            location: req.body.location,
-            district: req.body.district,
-            openbalance: parseInt(req.body.openbalance) || 0,
-            openpure: parseFloat(req.body.openpure) || 0
-        };
-
-        let sql = 'INSERT INTO retailer SET ?';
-
-        db.query(sql, retailer, (err, result) => {
+        getNextId('retailer', 'rid', 'R', (err, nextId) => {
 
             if (err) {
                 console.error(err);
-                return res.status(500).send('Error inserting retailer');
+                return res.status(500).send('Error generating ID');
             }
 
-            res.send('Retailer added successfully');
+            let retailer = {
+                rid: nextId,
+                dsename: req.body.dsename,
+                retailername: req.body.retailername,
+                mobile: req.body.mobile,
+                location: req.body.location,
+                district: req.body.district,
+                openbalance: parseInt(req.body.openbalance) || 0,
+                openpure: parseFloat(req.body.openpure) || 0
+            };
 
+            let sql = 'INSERT INTO retailer SET ?';
+
+            db.query(sql, retailer, (err, result) => {
+
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send('Error inserting retailer');
+                }
+
+                res.send('Retailer added successfully');
+
+            });
         });
-
     });
 });
 
@@ -459,34 +492,45 @@ app.post('/delete_retailer', (req, res) => {
 app.post('/update_retailer', (req, res) => {
 
     let rid = req.body.rid;
+    let retailername = req.body.retailername;
 
     if (!rid) {
         return res.status(400).send('Missing rid');
     }
+    if (!retailername) {
+        return res.status(400).send('Retailer Name is required');
+    }
 
-    let retailer = {
-        dsename: req.body.dsename,
-        retailername: req.body.retailername,
-        mobile: req.body.mobile,
-        location: req.body.location,
-        district: req.body.district,
-        openbalance: parseInt(req.body.openbalance) || 0,
-        openpure: parseFloat(req.body.openpure) || 0
-    };
-
-    let sql = 'UPDATE retailer SET ? WHERE rid = ?';
-
-    db.query(sql, [retailer, rid], (err, result) => {
-
-        if (err) {
-            console.error(err);
-            return res.status(500).send('Error updating retailer');
+    // Case-insensitive check for existing retailer name (excluding current record)
+    db.query('SELECT * FROM retailer WHERE LOWER(retailername) = LOWER(?) AND rid != ?', [retailername, rid], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking retailer'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('Retailer Name already exists');
         }
 
-        res.send('Retailer updated successfully');
+        let retailer = {
+            dsename: req.body.dsename,
+            retailername: req.body.retailername,
+            mobile: req.body.mobile,
+            location: req.body.location,
+            district: req.body.district,
+            openbalance: parseInt(req.body.openbalance) || 0,
+            openpure: parseFloat(req.body.openpure) || 0
+        };
 
+        let sql = 'UPDATE retailer SET ? WHERE rid = ?';
+
+        db.query(sql, [retailer, rid], (err, result) => {
+
+            if (err) {
+                console.error(err);
+                return res.status(500).send('Error updating retailer');
+            }
+
+            res.send('Retailer updated successfully');
+
+        });
     });
-
 });
 
 app.get('/view_retailer', (req, res) => {
@@ -530,24 +574,34 @@ app.get('/view_retailer_by_dse', (req, res) => {
 });
 
 app.post('/add_item', (req, res) => {
-    console.log("Received add_item body:", req.body);
-    getNextId('item', 'iid', 'I', (err, nextId) => {
-        if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+    let itemname = req.body.itemName;
+    if (!itemname) return res.status(400).send('Item Name is required');
 
-        let item = {
-            iid: nextId,
-            itemname: req.body.itemName,
-            coverweight: req.body.coverWeight,
-            category: req.body.category
-        };
-        let sql = 'INSERT INTO item SET ?';
-        db.query(sql, item, (err, result) => {
-            if (err) {
-                console.error(err);
-                res.status(500).send('Error inserting item');
-                return;
-            }
-            res.send('Item added...');
+    // Case-insensitive check for existing item
+    db.query('SELECT * FROM item WHERE LOWER(itemname) = LOWER(?)', [itemname], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking item'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('Item Name already exists');
+        }
+
+        getNextId('item', 'iid', 'I', (err, nextId) => {
+            if (err) { console.error(err); res.status(500).send('Error generating ID'); return; }
+
+            let item = {
+                iid: nextId,
+                itemname: req.body.itemName,
+                coverweight: req.body.coverWeight,
+                category: req.body.category
+            };
+            let sql = 'INSERT INTO item SET ?';
+            db.query(sql, item, (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).send('Error inserting item');
+                    return;
+                }
+                res.send('Item added...');
+            });
         });
     });
 });
@@ -2087,23 +2141,33 @@ app.get('/get_last_party_id', (req, res) => {
 });
 
 app.post('/add_party', (req, res) => {
-    console.log('Received add_party body:', req.body);
-    let party = {
-        pid: req.body.pid,
-        partyname: req.body.partyname,
-        mobile: req.body.mobile,
-        pure: req.body.pure,
-        makecharge: req.body.makecharge
-    };
+    let partyname = req.body.partyname;
+    if (!partyname) return res.status(400).send('Party Name is required');
 
-    let sql = 'INSERT INTO party SET ?';
-    db.query(sql, party, (err, result) => {
-        if (err) {
-            console.error(err);
-            res.status(500).send('Error inserting party: ' + err.message);
-            return;
+    // Case-insensitive check for existing party
+    db.query('SELECT * FROM party WHERE LOWER(partyname) = LOWER(?)', [partyname], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error checking party'); return; }
+        if (results.length > 0) {
+            return res.status(409).send('Party Name already exists');
         }
-        res.send('Party added successfully');
+
+        let party = {
+            pid: req.body.pid,
+            partyname: req.body.partyname,
+            mobile: req.body.mobile,
+            pure: req.body.pure,
+            makecharge: req.body.makecharge
+        };
+
+        let sql = 'INSERT INTO party SET ?';
+        db.query(sql, party, (err, result) => {
+            if (err) {
+                console.error(err);
+                res.status(500).send('Error inserting party: ' + err.message);
+                return;
+            }
+            res.send('Party added successfully');
+        });
     });
 });
 
