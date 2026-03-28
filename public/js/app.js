@@ -75,11 +75,35 @@ function exportToExcel(type) {
     // Generate Excel File
     try {
         const wb = XLSX.utils.table_to_book(tableClone, { sheet: "Data" });
+        const ws = wb.Sheets["Data"];
+
+        // Set column widths to prevent "#####" issue (auto-size or fixed minimums)
+        const colWidths = [];
+        const rows = tableClone.rows;
+        if (rows.length > 0) {
+            const numCols = rows[0].cells.length;
+            for (let i = 0; i < numCols; i++) {
+                // Default width based on header or typical content
+                let maxWidth = 15; 
+                for (let j = 0; j < rows.length; j++) {
+                    const row = rows[j];
+                    if (row.cells && row.cells[i]) {
+                        const cellValue = row.cells[i].innerText;
+                        if (cellValue && cellValue.length > maxWidth) {
+                            maxWidth = Math.min(cellValue.length + 2, 50); // Cap at 50
+                        }
+                    }
+                }
+                colWidths.push({ wch: maxWidth });
+            }
+        }
+        ws['!cols'] = colWidths;
+
         const fileName = `${baseFileName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(wb, fileName);
     } catch (err) {
         console.error("Export Error:", err);
-        alert("Failed to export. Please ensure the XLSX library is loaded.");
+        alert("Export failed: " + err.message);
     }
 }
 
@@ -546,17 +570,28 @@ function initAdvancedSearch() {
         const dseGroup = document.getElementById('filter-dse-group');
         const retailerGroup = document.getElementById('filter-retailer-group');
         const partyGroup = document.getElementById('filter-party-group');
+        const itemNameGroup = document.getElementById('filter-item-name');
+        const payModeGroup = document.getElementById('filter-pay-mode');
 
         // Reset visibility
         dseGroup.style.display = 'block';
         retailerGroup.style.display = 'block';
         partyGroup.style.display = 'none';
+        itemNameGroup.style.display = 'block';
+        payModeGroup.style.display = 'none';
 
         if (type === 'payment') {
             retailerGroup.style.display = 'none'; // DSE Payments don't have retailer
+            itemNameGroup.style.display = 'none'; // Payments don't have items
+            payModeGroup.style.display = 'block'; // Show Pay Mode instead
+        } else if (type === 'retailer_payment') {
+            itemNameGroup.style.display = 'none'; // Retailer Payments don't have items
+            payModeGroup.style.display = 'block'; // Show Pay Mode instead
         } else if (type === 'expenses') {
             dseGroup.style.display = 'none';
             retailerGroup.style.display = 'none';
+            payModeGroup.style.display = 'block'; // Expenses also have paymode
+            itemNameGroup.style.display = 'none';
         } else if (type === 'purchase') {
             dseGroup.style.display = 'none';
             retailerGroup.style.display = 'none';
@@ -565,6 +600,9 @@ function initAdvancedSearch() {
             retailerGroup.style.display = 'none';
         } else if (type === 'inventory') {
             retailerGroup.style.display = 'none';
+        } else if (type === 'petrol') {
+            retailerGroup.style.display = 'none';
+            itemNameGroup.style.display = 'none';
         }
     });
 
@@ -614,6 +652,7 @@ async function performSearch() {
         amountMin: document.getElementById('searchAmountMin').value,
         amountMax: document.getElementById('searchAmountMax').value,
         itemName: document.getElementById('searchItemName').value,
+        payMode: document.getElementById('searchPayMode').value,
         userid: localStorage.getItem('userId') // Send UserID if available
     };
 
@@ -639,7 +678,7 @@ async function performSearch() {
         const exportBtn = document.getElementById('export-search-btn');
         if (exportBtn) {
             exportBtn.classList.remove('d-none');
-            exportBtn.onclick = () => exportToExcel(type); // Export current search type
+            exportBtn.onclick = () => exportToExcel('search'); // Correctly point to search container
         }
 
     } catch (error) {
@@ -666,14 +705,14 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     const isOffice = user && user.Role === 'office';
 
     if (type === 'sales') columns = ['Date', 'Inv No', 'DSE', 'Retailer', 'Final Total'];
-    else if (type === 'payment') columns = ['Date', 'Pay ID', 'DSE', 'Amount', 'Mode'];
-    else if (type === 'retailer_payment') columns = ['Date', 'Pay ID', 'DSE', 'Retailer', 'Amount', 'Mode'];
+    else if (type === 'payment') columns = ['Date', 'DSE Name', 'Payment Mode', 'Amount'];
+    else if (type === 'retailer_payment') columns = ['Date', 'Pay ID', 'DSE', 'Retailer', 'Amount', 'Mode', 'Silver Weight', 'Pure', 'Pure Cash'];
     else if (type === 'stock') columns = ['Date', 'Stock ID', 'DSE'];
     else if (type === 'inventory') columns = ['Date', 'Invent ID', 'DSE'];
     else if (type === 'purchase') columns = isOffice ? ['Date', 'Purchase ID'] : ['Date', 'Purchase ID', 'Party'];
     else if (type === 'puremc') columns = ['Date', 'Pure ID', 'DSE', 'Retailer'];
     else if (type === 'expenses') columns = ['Date', 'Ex ID', 'Particulars', 'Pay Mode', 'Amount', 'Pure', 'Description'];
-    else if (type === 'petrol') columns = ['Date', 'Pet ID', 'DSE', 'Amount', 'Description'];
+    else if (type === 'petrol') columns = ['Date', 'Description', 'Amount'];
 
     let html = '<table class="data-table"><thead><tr>';
 
@@ -684,8 +723,12 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     columns.forEach(col => html += `<th>${col}</th>`);
     html += '</tr></thead><tbody>';
 
+    let petrolTotal = 0;
+    let paymentTotal = 0;
+    let expensesTotal = { amount: 0, pure: 0 };
+
     data.forEach((row, index) => {
-        const rowId = `${type}-row-${index}`; // Unique ID based on type
+        const rowId = `${type}-row-${index}`;
         html += `<tr class="main-row">`;
 
         if (hasNested) {
@@ -695,9 +738,11 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         if (type === 'sales') {
             html += `<td>${row.date}</td><td>${row.invno}</td><td>${row.dse}</td><td>${row.retailer}</td><td>₹${row.finaltotal}</td>`;
         } else if (type === 'payment') {
-            html += `<td>${row.date}</td><td>${row.payid}</td><td>${row.dsename}</td><td>₹${row.amount}</td><td>${row.mode}</td>`;
+            const amt = parseFloat(row.amount || 0);
+            paymentTotal += amt;
+            html += `<td>${row.date}</td><td>${row.dsename}</td><td>${row.mode}</td><td>₹${amt.toFixed(2)}</td>`;
         } else if (type === 'retailer_payment') {
-            html += `<td>${row.date}</td><td>${row.payid}</td><td>${row.dsename}</td><td>${row.retailername}</td><td>₹${row.amount}</td><td>${row.mode}</td>`;
+            html += `<td>${row.date}</td><td>${row.payid}</td><td>${row.dsename}</td><td>${row.retailername}</td><td>₹${row.amount}</td><td>${row.mode}</td><td>${row.silverweight || 0}</td><td>${parseFloat(row.pure || 0).toFixed(3)}</td><td>₹${parseFloat(row.purecash || 0).toFixed(2)}</td>`;
         } else if (type === 'stock') {
             html += `<td>${row.date}</td><td>${row.stockid}</td><td>${row.dse}</td>`;
         } else if (type === 'inventory') {
@@ -707,69 +752,127 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         } else if (type === 'puremc') {
             html += `<td>${row.date}</td><td>${row.pureid}</td><td>${row.dsename}</td><td>${row.retailername}</td>`;
         } else if (type === 'expenses') {
-            html += `<td>${row.date}</td><td>${row.exid}</td><td>${row.particulars}</td><td>${row.paymode || '-'}</td><td>₹${row.amount}</td><td>${row.pure || '0'}</td><td>${row.description || '-'}</td>`;
+            const expAmt = parseFloat(row.amount || 0);
+            const expPure = parseFloat(row.pure || 0);
+            expensesTotal.amount += expAmt;
+            expensesTotal.pure += expPure;
+            html += `<td>${row.date}</td><td>${row.exid}</td><td>${row.particulars}</td><td>${row.paymode || '-'}</td><td>₹${expAmt.toFixed(2)}</td><td>${expPure.toFixed(3)}</td><td>${row.description || '-'}</td>`;
         } else if (type === 'petrol') {
-            html += `<td>${row.date}</td><td>${row.petid}</td><td>${row.dsename}</td><td>₹${row.amount}</td><td>${row.description || '-'}</td>`;
+            const petAmt = parseFloat(row.amount || 0);
+            petrolTotal += petAmt;
+            html += `<td>${row.date}</td><td>${row.description || '-'}</td><td>₹${petAmt.toFixed(2)}</td>`;
         }
         html += '</tr>';
 
-
-
-
-        // Nested Row
         if (hasNested) {
             let nestedHtml = '';
-
-            // Handle Item Lists (Sales, Stock, Purchase, PureMC, Inventory)
             if (['sales', 'stock', 'purchase', 'puremc', 'inventory'].includes(type)) {
                 if (row.items && row.items.length > 0) {
+                    let itemTotals = { totalWt: 0, count: 0, amount: 0, cover: 0, withCover: 0, mc: 0, pure: 0 };
+                    
                     nestedHtml = `<table class="nested-table">
                         <thead>
                             <tr>
                                 <th>Item</th><th>Weight</th><th>Count</th>
                                 ${type === 'sales' ? '<th>Rate</th><th>Total</th>' : ''}
-                                ${['stock', 'inventory'].includes(type) ? '<th>Cover</th>' : ''}
+                                ${['stock', 'inventory'].includes(type) ? '<th>Silver</th><th>Cover</th>' : ''}
                                 ${type === 'purchase' ? '<th>MC</th><th>%</th><th>Pure</th><th>Total</th>' : ''}
-                                ${type === 'puremc' ? '<th>MC</th><th>Total</th>' : ''}
+                                ${type === 'puremc' ? '<th>MC</th><th>%</th><th>Pure</th><th>Total</th>' : ''}
                             </tr>
                         </thead>
                         <tbody>`;
-
+ 
                     row.items.forEach(item => {
+                        const grossWeight = parseFloat(item.weight || item.wt || 0); // Primary weight (e.g. 101.6)
+                        const netWeight = parseFloat(item.cover || item.coverwt || item.withcoverwt || 0); // Automatic value (e.g. 100)
+                        const ct = parseInt(item.count || 0);
+                        const amt = parseFloat(item.total || item.totalamount || 0);
+                        const coverWeight = Math.max(0, grossWeight - netWeight);
+                        const mcVal = parseFloat(item.mc || 0);
+                        const pureVal = parseFloat(item.pure || 0);
+
+                        itemTotals.totalWt += grossWeight;
+                        itemTotals.count += ct;
+                        itemTotals.amount += amt;
+                        itemTotals.withCover += netWeight; // Displayed as With Cover Weight per user request
+                        itemTotals.cover += coverWeight;
+                        itemTotals.mc += mcVal;
+                        itemTotals.pure += pureVal;
+
                         nestedHtml += `<tr>
                             <td>${item.item || item.product || '-'}</td>
-                            <td>${item.weight || item.wt || 0}</td>
-                            <td>${item.count || 0}</td>
-                            ${type === 'sales' ? `<td>${item.rate}</td><td>₹${item.total}</td>` : ''}
-                            ${['stock', 'inventory'].includes(type) ? `<td>${item.cover || item.coverwt || 0}</td>` : ''}
-                            ${type === 'purchase' ? `<td>${item.mc || 0}</td><td>${item.percent || 0}%</td><td>${item.pure || 0}</td><td>₹${item.totalamount || 0}</td>` : ''}
-                            ${type === 'puremc' ? `<td>${item.mc}</td><td>₹${item.total}</td>` : ''}
+                            <td>${grossWeight.toFixed(3)}</td>
+                            <td>${ct}</td>
+                            ${type === 'sales' ? `<td>${item.rate}</td><td>₹${amt.toFixed(2)}</td>` : ''}
+                            ${['stock', 'inventory'].includes(type) ? `<td>${netWeight.toFixed(3)}</td><td>${coverWeight.toFixed(3)}</td>` : ''}
+                            ${type === 'purchase' ? `<td>₹${mcVal.toFixed(2)}</td><td>${item.percent || 0}%</td><td>${pureVal.toFixed(3)}</td><td>₹${amt.toFixed(2)}</td>` : ''}
+                            ${type === 'puremc' ? `<td>₹${mcVal.toFixed(2)}</td><td>${item.percent || 0}%</td><td>${pureVal.toFixed(3)}</td><td>₹${amt.toFixed(2)}</td>` : ''}
                         </tr>`;
                     });
-                    nestedHtml += `</tbody></table>`;
+
+                    // Add summary row for Sales, Stock, Inventory, Purchase, and PureMC
+                    if (['sales', 'stock', 'inventory', 'purchase', 'puremc'].includes(type) && row.items.length > 0) {
+                        nestedHtml += `
+                        </tbody>
+                        <tfoot>
+                            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                                <td style="text-align: left;">TOTAL</td>
+                                <td>${itemTotals.totalWt.toFixed(3)}</td>
+                                <td>${itemTotals.count}</td>
+                                ${type === 'sales' ? `<td></td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                                ${['stock', 'inventory'].includes(type) ? `<td>${itemTotals.withCover.toFixed(3)}</td><td>${itemTotals.cover.toFixed(3)}</td>` : ''}
+                                ${type === 'purchase' ? `<td>₹${itemTotals.mc.toFixed(2)}</td><td></td><td>${itemTotals.pure.toFixed(3)}</td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                                ${type === 'puremc' ? `<td>₹${itemTotals.mc.toFixed(2)}</td><td></td><td>${itemTotals.pure.toFixed(3)}</td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                            </tr>
+                        </tfoot>`;
+                    }
+                    nestedHtml += `</table>`;
                 } else {
                     nestedHtml = '<p class="text-muted p-2">No items found.</p>';
                 }
-            }
-            // Handle Detail View (Retailer Payment)
-            else if (type === 'retailer_payment') {
-                nestedHtml = `<div class="detail-view">
-                    <p><strong>Silver Weight:</strong> ${row.silverweight || '0'} g</p>
-                    <p><strong>Description:</strong> ${row.description || '-'}</p>
-                </div>`;
+            } else if (type === 'retailer_payment') {
+                nestedHtml = `<div class="detail-view"><p class="text-muted">No additional details available for this payment.</p></div>`;
             }
 
             html += `<tr id="${rowId}" class="detail-row d-none">
                 <td colspan="${columns.length + 1}">
-                    <div class="nested-container">
-                        ${nestedHtml}
-                    </div>
+                    <div class="nested-container">${nestedHtml}</div>
                 </td>
             </tr>`;
         }
     });
 
-    html += '</tbody></table>';
+    if (type === 'petrol' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                <td colspan="2" style="text-align: left;">TOTAL</td>
+                <td>₹${petrolTotal.toFixed(2)}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'expenses' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                <td colspan="4" style="text-align: left;">TOTAL</td>
+                <td>₹${expensesTotal.amount.toFixed(2)}</td>
+                <td>${expensesTotal.pure.toFixed(3)}</td>
+                <td></td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'payment' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                <td colspan="3" style="text-align: left;">TOTAL</td>
+                <td>₹${paymentTotal.toFixed(2)}</td>
+            </tr>
+        </tfoot>`;
+    } else {
+        html += '</tbody>';
+    }
+
+    html += '</table>';
     container.innerHTML = html;
 }
 

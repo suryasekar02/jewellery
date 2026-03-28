@@ -2551,6 +2551,26 @@ app.post('/search_transactions', (req, res) => {
         }
     }
 
+    // Payment Mode Filter (Specialized logic for weight-based types)
+    if (filters.payMode) {
+        if (type === 'retailer_payment') {
+            if (filters.payMode === 'Silver') {
+                whereClauses.push(`${config.alias}.silverweight > 0`);
+            } else if (filters.payMode === 'Pure') {
+                whereClauses.push(`${config.alias}.pure > 0`);
+            } else if (filters.payMode === 'Pure Cash') {
+                whereClauses.push(`(${config.alias}.mode = 'Pure Cash' OR ${config.alias}.purecash > 0)`);
+            } else {
+                whereClauses.push(`${config.alias}.mode = ?`);
+                params.push(filters.payMode);
+            }
+        } else if (['payment', 'expenses'].includes(type)) {
+            let col = (type === 'expenses') ? 'paymode' : 'mode';
+            whereClauses.push(`${config.alias}.${col} = ?`);
+            params.push(filters.payMode);
+        }
+    }
+
     // Party Filter for Purchase
     if (type === 'purchase' && filters.party) {
         whereClauses.push(`${config.alias}.party LIKE ?`);
@@ -2659,7 +2679,7 @@ app.post('/search_transactions', (req, res) => {
                         item: i.item,
                         weight: i.wt,
                         count: i.count,
-                        cover: i.coverwt
+                        cover: i.withcoverwt
                     }));
                     row.stockItems = row.items;
                 });
@@ -2687,8 +2707,12 @@ app.post('/search_transactions', (req, res) => {
                         item: i.item,
                         weight: i.wt,
                         count: i.count,
-                        cover: i.coverwt
+                        mc: i.mc,
+                        percent: i.percent,
+                        pure: i.pure,
+                        totalamount: i.totalamount
                     }));
+                    row.purchaseItems = row.items;
                 });
                 res.json(results);
             });
@@ -2707,6 +2731,8 @@ app.post('/search_transactions', (req, res) => {
                         weight: i.weight,
                         count: i.count,
                         mc: i.mc,
+                        percent: i.percent,
+                        pure: i.pure,
                         total: i.totalamount
                     }));
                 });
@@ -2726,7 +2752,7 @@ app.post('/search_transactions', (req, res) => {
                         item: i.item,
                         weight: i.wt,
                         count: i.count,
-                        cover: i.coverwt
+                        cover: i.withcoverwt
                     }));
                 });
                 res.json(results);
