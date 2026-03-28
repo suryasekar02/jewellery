@@ -2,6 +2,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const fs = require('fs');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -2483,6 +2484,12 @@ app.post('/search_transactions', (req, res) => {
             alias: 'pm',
             dateField: 'date',
             select: 'pm.*'
+        },
+        'party_payout': {
+            table: 'partypayout',
+            alias: 'pp',
+            dateField: 'date',
+            select: 'pp.*'
         }
     };
 
@@ -2508,13 +2515,19 @@ app.post('/search_transactions', (req, res) => {
         params.push('Office');
     }
 
-    // Date Range Filter
+    // Date Range Filter (Normalization for mixed formats: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY)
+    const dbDateExpr = `DATE(COALESCE(
+        STR_TO_DATE(\`${config.alias}\`.\`${config.dateField}\`, '%d/%m/%Y'),
+        STR_TO_DATE(\`${config.alias}\`.\`${config.dateField}\`, '%Y-%m-%d'),
+        STR_TO_DATE(\`${config.alias}\`.\`${config.dateField}\`, '%d-%m-%Y')
+    ))`;
+
     if (filters.dateFrom) {
-        whereClauses.push(`${config.alias}.${config.dateField} >= ?`);
+        whereClauses.push(`${dbDateExpr} >= CAST(? AS DATE)`);
         params.push(filters.dateFrom);
     }
     if (filters.dateTo) {
-        whereClauses.push(`${config.alias}.${config.dateField} <= ?`);
+        whereClauses.push(`${dbDateExpr} <= CAST(? AS DATE)`);
         params.push(filters.dateTo);
     }
 
@@ -2571,9 +2584,10 @@ app.post('/search_transactions', (req, res) => {
         }
     }
 
-    // Party Filter for Purchase
-    if (type === 'purchase' && filters.party) {
-        whereClauses.push(`${config.alias}.party LIKE ?`);
+    // Party Filter for Purchase and Party Payout
+    if ((type === 'purchase' || type === 'party_payout') && filters.party) {
+        let col = (type === 'party_payout') ? 'partyname' : 'party';
+        whereClauses.push(`\`${config.alias}\`.\`${col}\` LIKE ?`);
         params.push(`%${filters.party}%`);
     }
 
@@ -2663,6 +2677,7 @@ app.post('/search_transactions', (req, res) => {
                     // Keep legacy support if needed, but standardize on 'items'
                     row.saleItems = row.items;
                 });
+                fs.appendFileSync('search_debug.log', `Final Results to send: ${results.length}\n`);
                 res.json(results);
             });
         } else if (type === 'stock' && results.length > 0) {

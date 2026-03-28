@@ -421,10 +421,26 @@ tbody td {
     word-break: break-word;
 }
 
-/* Numeric Cell Alignment */
-td:nth-child(n+2):not(:has(button)) {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
+/* Table Alignments & Widths */
+.text-left { text-align: left !important; }
+.text-right { text-align: right !important; font-variant-numeric: tabular-nums; }
+.text-center { text-align: center !important; }
+
+.col-retailer, .col-dsename, .col-name { 
+    min-width: 220px !important; 
+    text-align: left !important;
+}
+
+.col-narrow { 
+    width: 90px !important; 
+    padding-left: 0.5rem !important; 
+    padding-right: 0.5rem !important;
+    text-align: right !important;
+}
+
+.col-id {
+    width: 60px !important; 
+    text-align: left !important;
 }
 
 tbody tr:last-child td {

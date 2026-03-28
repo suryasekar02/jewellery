@@ -22,7 +22,7 @@ window.fetch = function() {
 function exportToExcel(type) {
     let containerId = "";
     let baseFileName = type;
-
+ 
     const mapping = {
         'view_dse': 'dse-data', 'view_retailer': 'retailers-data', 'view_parties': 'parties-data',
         'view_item': 'items-data', 'view_category': 'categories-data', 'view_users': 'users-data',
@@ -50,61 +50,116 @@ function exportToExcel(type) {
     } else {
         containerId = mapping[type] || type;
     }
-
+ 
     const container = document.getElementById(containerId);
     if (!container) {
         alert("No data to export");
         return;
     }
-
+ 
     const table = container.querySelector("table");
     if (!table || table.rows.length <= 1) {
         alert("No data to export");
         return;
     }
-
-    // Clone table to safely manipulate for export (remove UI elements like toggle buttons)
-    const tableClone = table.cloneNode(true);
-    
-    // Remove "Details" toggle columns and buttons
-    tableClone.querySelectorAll('button, .btn-toggle, .btn-action, .d-none').forEach(el => el.remove());
-    
-    // Ensure nested rows (like search details) are also excluded
-    tableClone.querySelectorAll('.detail-row').forEach(el => el.remove());
-
+ 
     // Generate Excel File
     try {
-        const wb = XLSX.utils.table_to_book(tableClone, { sheet: "Data" });
-        const ws = wb.Sheets["Data"];
-
-        // Set column widths to prevent "#####" issue (auto-size or fixed minimums)
-        const colWidths = [];
-        const rows = tableClone.rows;
-        if (rows.length > 0) {
-            const numCols = rows[0].cells.length;
-            for (let i = 0; i < numCols; i++) {
-                // Default width based on header or typical content
-                let maxWidth = 15; 
-                for (let j = 0; j < rows.length; j++) {
-                    const row = rows[j];
-                    if (row.cells && row.cells[i]) {
-                        const cellValue = row.cells[i].innerText;
-                        if (cellValue && cellValue.length > maxWidth) {
-                            maxWidth = Math.min(cellValue.length + 2, 50); // Cap at 50
-                        }
-                    }
+        const wb = XLSX.utils.book_new();
+ 
+        // 1. Sheet 1 - Overview (Clean main table)
+        const tableClone = table.cloneNode(true);
+        // Remove "Details" toggle columns, buttons, and nested rows
+        tableClone.querySelectorAll('button, .btn-toggle, .btn-action, .d-none, .detail-row').forEach(el => el.remove());
+        const wsOverview = XLSX.utils.table_to_sheet(tableClone, { raw: true });
+        
+        // Auto-width for Overview
+        applyAutoWidth(wsOverview, tableClone.rows);
+        XLSX.utils.book_append_sheet(wb, wsOverview, "Overview");
+ 
+        // 2. Sheet 2 - Itemized Details (Scrape nested tables)
+        const detailRows = Array.from(table.querySelectorAll('.detail-row'));
+        if (detailRows.length > 0) {
+            const detailData = [];
+            let detailHeaders = [];
+            
+            detailRows.forEach(detailRow => {
+                const nestedTable = detailRow.querySelector('.nested-table');
+                if (!nestedTable) return;
+                
+                // Identify the Parent Reference ID (e.g., Invoice No or Invent ID)
+                // It is typically in the 2nd cell of the preceding main row (after toggle button)
+                const mainRow = detailRow.previousElementSibling;
+                let parentId = "Unknown";
+                if (mainRow && mainRow.cells.length > 1) {
+                    // Skip toggle cell (0), take ID cell (1)
+                    parentId = mainRow.cells[1].innerText.trim();
                 }
-                colWidths.push({ wch: maxWidth });
+ 
+                // Extract Headers if not already done
+                if (detailHeaders.length === 0) {
+                    const heads = Array.from(nestedTable.querySelectorAll('thead th')).map(th => th.innerText.trim());
+                    detailHeaders = ["Ref ID", ...heads];
+                    detailData.push(detailHeaders);
+                }
+ 
+                // Extract Body Rows (Skip footers)
+                const bodyRows = Array.from(nestedTable.querySelectorAll('tbody tr'));
+                bodyRows.forEach(tr => {
+                    const rowData = [parentId, ...Array.from(tr.cells).map(td => td.innerText.trim())];
+                    detailData.push(rowData);
+                });
+            });
+ 
+            if (detailData.length > 1) {
+                const wsDetails = XLSX.utils.aoa_to_sheet(detailData);
+                // Simple auto-width for Details based on headers/data
+                applyAutoWidthFromAOA(wsDetails, detailData);
+                XLSX.utils.book_append_sheet(wb, wsDetails, "Itemized Details");
             }
         }
-        ws['!cols'] = colWidths;
-
+ 
         const fileName = `${baseFileName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(wb, fileName);
     } catch (err) {
         console.error("Export Error:", err);
         alert("Export failed: " + err.message);
     }
+}
+ 
+// Helper for auto-width from HTML table rows
+function applyAutoWidth(ws, rows) {
+    if (!rows || rows.length === 0) return;
+    const colWidths = [];
+    const numCols = rows[0].cells.length;
+    for (let i = 0; i < numCols; i++) {
+        let maxWidth = 15;
+        for (let j = 0; j < rows.length; j++) {
+            const row = rows[j];
+            if (row.cells && row.cells[i]) {
+                const val = row.cells[i].innerText || "";
+                if (val.length > maxWidth) maxWidth = Math.min(val.length + 2, 50);
+            }
+        }
+        colWidths.push({ wch: maxWidth });
+    }
+    ws['!cols'] = colWidths;
+}
+ 
+// Helper for auto-width from AOA (Array of Arrays)
+function applyAutoWidthFromAOA(ws, aoa) {
+    if (!aoa || aoa.length === 0) return;
+    const colWidths = [];
+    const numCols = aoa[0].length;
+    for (let i = 0; i < numCols; i++) {
+        let maxWidth = 15;
+        for (let j = 0; j < aoa.length; j++) {
+            const val = String(aoa[j][i] || "");
+            if (val.length > maxWidth) maxWidth = Math.min(val.length + 2, 50);
+        }
+        colWidths.push({ wch: maxWidth });
+    }
+    ws['!cols'] = colWidths;
 }
 
 // Helper to render report results to both main and dashboard containers
@@ -603,6 +658,11 @@ function initAdvancedSearch() {
         } else if (type === 'petrol') {
             retailerGroup.style.display = 'none';
             itemNameGroup.style.display = 'none';
+        } else if (type === 'party_payout') {
+            dseGroup.style.display = 'none';
+            retailerGroup.style.display = 'none';
+            itemNameGroup.style.display = 'none';
+            partyGroup.style.display = 'block';
         }
     });
 
@@ -669,9 +729,12 @@ async function performSearch() {
             body: JSON.stringify({ type, filters })
         });
 
-        if (!response.ok) throw new Error('Search failed');
-
         const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || `Server Error: ${response.status}`);
+        }
+
         renderSearchResults(type, data);
 
         // Show export button for search results
@@ -682,8 +745,8 @@ async function performSearch() {
         }
 
     } catch (error) {
-        console.error(error);
-        container.innerHTML = `<p class="text-danger">Error: ${error.message}</p>`;
+        console.error('Search error:', error);
+        container.innerHTML = `<p class="error-msg">Error: ${error.message}</p>`;
     }
 }
 
@@ -704,27 +767,45 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     const user = JSON.parse(localStorage.getItem('user'));
     const isOffice = user && user.Role === 'office';
 
-    if (type === 'sales') columns = ['Date', 'Inv No', 'DSE', 'Retailer', 'Final Total'];
-    else if (type === 'payment') columns = ['Date', 'DSE Name', 'Payment Mode', 'Amount'];
-    else if (type === 'retailer_payment') columns = ['Date', 'Pay ID', 'DSE', 'Retailer', 'Amount', 'Mode', 'Silver Weight', 'Pure', 'Pure Cash'];
+    if (type === 'sales') columns = ['Date', 'Retailer', 'Final Total'];
+    else if (type === 'payment') columns = ['DSE Name', 'Date', 'Payment Mode', 'Amount'];
+    else if (type === 'retailer_payment') columns = ['Date', 'DSE', 'Retailer', 'Amount', 'Mode', 'Silver Weight', 'Pure', 'Pure Cash'];
     else if (type === 'stock') columns = ['Date', 'Stock ID', 'DSE'];
     else if (type === 'inventory') columns = ['Date', 'Invent ID', 'DSE'];
     else if (type === 'purchase') columns = isOffice ? ['Date', 'Purchase ID'] : ['Date', 'Purchase ID', 'Party'];
     else if (type === 'puremc') columns = ['Date', 'Pure ID', 'DSE', 'Retailer'];
     else if (type === 'expenses') columns = ['Date', 'Ex ID', 'Particulars', 'Pay Mode', 'Amount', 'Pure', 'Description'];
-    else if (type === 'petrol') columns = ['Date', 'Description', 'Amount'];
+    else if (type === 'petrol') columns = ['DSE Name', 'Date', 'Description', 'Amount'];
+    else if (type === 'party_payout') columns = ['Date', 'Party Name', 'Pure', 'MC'];
+
+    const colClasses = {
+        'Date': 'text-left', 'DSE': 'text-left col-dsename', 'DSE Name': 'text-left col-dsename', 
+        'Retailer': 'text-left col-retailer', 'Amount': 'text-right', 'Final Total': 'text-right',
+        'Invoice Number': 'text-left', 'Stock ID': 'col-id text-left', 'Invent ID': 'col-id text-left',
+        'Purchase ID': 'col-id text-left', 'Pure ID': 'col-id text-left', 'Ex ID': 'col-id text-left',
+        'Description': 'text-left', 'Particulars': 'text-left', 'Pay Mode': 'text-left',
+        'Mode': 'text-left', 'Payment Mode': 'text-left', 'Silver Weight': 'text-right col-narrow',
+        'Pure': 'text-right col-narrow', 'Pure Cash': 'text-right', 'Party': 'text-left col-name',
+        'Party Name': 'text-left col-name', 'Payout No': 'col-id text-left', 'MC': 'text-right'
+    };
 
     let html = '<table class="data-table"><thead><tr>';
 
-    // Check if Type supports Nested Grid
-    const hasNested = ['sales', 'stock', 'purchase', 'puremc', 'inventory', 'retailer_payment'].includes(type);
-    if (hasNested) html += '<th>Details</th>';
+    // Check if Type supports Nested Grid (Sales and Retailer Payment removed for clean overview)
+    const hasNested = ['stock', 'purchase', 'puremc', 'inventory'].includes(type);
+    if (hasNested) html += '<th class="text-center" style="width: 50px;">Details</th>';
 
-    columns.forEach(col => html += `<th>${col}</th>`);
+    columns.forEach(col => {
+        const cls = colClasses[col] || '';
+        html += `<th class="${cls}">${col}</th>`;
+    });
     html += '</tr></thead><tbody>';
 
     let petrolTotal = 0;
     let paymentTotal = 0;
+    let salesTotalSum = 0;
+    let pureTotalSum = 0;
+    let mcTotalSum = 0;
     let expensesTotal = { amount: 0, pure: 0 };
 
     data.forEach((row, index) => {
@@ -736,31 +817,39 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         }
 
         if (type === 'sales') {
-            html += `<td>${row.date}</td><td>${row.invno}</td><td>${row.dse}</td><td>${row.retailer}</td><td>₹${row.finaltotal}</td>`;
+            const finalTotal = parseFloat(row.finaltotal || 0);
+            salesTotalSum += finalTotal;
+            html += `<td class="text-left">${row.date}</td><td class="text-left col-retailer">${row.retailer}</td><td class="text-right">₹${finalTotal.toLocaleString()}</td>`;
         } else if (type === 'payment') {
             const amt = parseFloat(row.amount || 0);
             paymentTotal += amt;
-            html += `<td>${row.date}</td><td>${row.dsename}</td><td>${row.mode}</td><td>₹${amt.toFixed(2)}</td>`;
+            html += `<td class="text-left col-dsename">${row.dsename}</td><td class="text-left">${row.date}</td><td class="text-left">${row.mode}</td><td class="text-right">₹${amt.toFixed(2)}</td>`;
         } else if (type === 'retailer_payment') {
-            html += `<td>${row.date}</td><td>${row.payid}</td><td>${row.dsename}</td><td>${row.retailername}</td><td>₹${row.amount}</td><td>${row.mode}</td><td>${row.silverweight || 0}</td><td>${parseFloat(row.pure || 0).toFixed(3)}</td><td>₹${parseFloat(row.purecash || 0).toFixed(2)}</td>`;
+            html += `<td class="text-left">${row.date}</td><td class="text-left col-dsename">${row.dsename}</td><td class="text-left col-retailer">${row.retailername}</td><td class="text-right">₹${row.amount}</td><td class="text-left">${row.mode}</td><td class="text-right col-narrow">${row.silverweight || 0}</td><td class="text-right col-narrow">${parseFloat(row.pure || 0).toFixed(3)}</td><td class="text-right">₹${parseFloat(row.purecash || 0).toFixed(2)}</td>`;
         } else if (type === 'stock') {
-            html += `<td>${row.date}</td><td>${row.stockid}</td><td>${row.dse}</td>`;
+            html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.stockid}</td><td class="text-left col-dsename">${row.dse}</td>`;
         } else if (type === 'inventory') {
-            html += `<td>${row.date}</td><td>${row.inventid}</td><td>${row.dse}</td>`;
+            html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.inventid}</td><td class="text-left col-dsename">${row.dse}</td>`;
         } else if (type === 'purchase') {
-            html += `<td>${row.date}</td><td>${row.purchaseid}</td>${isOffice ? '' : `<td>${row.party}</td>`}`;
+            html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.purchaseid}</td>${isOffice ? '' : `<td class="text-left col-name">${row.party}</td>`}`;
         } else if (type === 'puremc') {
-            html += `<td>${row.date}</td><td>${row.pureid}</td><td>${row.dsename}</td><td>${row.retailername}</td>`;
+            html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.pureid}</td><td class="text-left col-dsename">${row.dsename}</td><td class="text-left col-retailer">${row.retailername}</td>`;
         } else if (type === 'expenses') {
             const expAmt = parseFloat(row.amount || 0);
             const expPure = parseFloat(row.pure || 0);
             expensesTotal.amount += expAmt;
             expensesTotal.pure += expPure;
-            html += `<td>${row.date}</td><td>${row.exid}</td><td>${row.particulars}</td><td>${row.paymode || '-'}</td><td>₹${expAmt.toFixed(2)}</td><td>${expPure.toFixed(3)}</td><td>${row.description || '-'}</td>`;
+            html += `<td class="text-left">${row.date}</td><td class="col-id text-left">${row.exid}</td><td class="text-left">${row.particulars}</td><td class="text-left">${row.paymode || '-'}</td><td class="text-right">₹${expAmt.toFixed(2)}</td><td class="text-right col-narrow">${expPure.toFixed(3)}</td><td class="text-left">${row.description || '-'}</td>`;
         } else if (type === 'petrol') {
             const petAmt = parseFloat(row.amount || 0);
             petrolTotal += petAmt;
-            html += `<td>${row.date}</td><td>${row.description || '-'}</td><td>₹${petAmt.toFixed(2)}</td>`;
+            html += `<td class="text-left col-dsename">${row.dsename || '-'}</td><td class="text-left">${row.date}</td><td class="text-left">${row.description || '-'}</td><td class="text-right">₹${petAmt.toFixed(2)}</td>`;
+        } else if (type === 'party_payout') {
+            const pureVal = parseFloat(row.pure || 0);
+            const mcVal = parseFloat(row.mc || 0);
+            pureTotalSum += pureVal;
+            mcTotalSum += mcVal;
+            html += `<td class="text-left">${row.date}</td><td class="text-left col-name">${row.partyname}</td><td class="text-right col-narrow">${pureVal.toFixed(3)}</td><td class="text-right">${row.mc || 0}</td>`;
         }
         html += '</tr>';
 
@@ -846,17 +935,17 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         html += `</tbody>
         <tfoot class="total-row">
             <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
-                <td colspan="2" style="text-align: left;">TOTAL</td>
-                <td>₹${petrolTotal.toFixed(2)}</td>
+                <td colspan="3" class="text-left">TOTAL</td>
+                <td class="text-right">₹${petrolTotal.toFixed(2)}</td>
             </tr>
         </tfoot>`;
     } else if (type === 'expenses' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
             <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
-                <td colspan="4" style="text-align: left;">TOTAL</td>
-                <td>₹${expensesTotal.amount.toFixed(2)}</td>
-                <td>${expensesTotal.pure.toFixed(3)}</td>
+                <td colspan="4" class="text-left">TOTAL</td>
+                <td class="text-right">₹${expensesTotal.amount.toFixed(2)}</td>
+                <td class="text-right col-narrow">${expensesTotal.pure.toFixed(3)}</td>
                 <td></td>
             </tr>
         </tfoot>`;
@@ -864,8 +953,25 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         html += `</tbody>
         <tfoot class="total-row">
             <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
-                <td colspan="3" style="text-align: left;">TOTAL</td>
-                <td>₹${paymentTotal.toFixed(2)}</td>
+                <td colspan="3" class="text-left">TOTAL</td>
+                <td class="text-right">₹${paymentTotal.toFixed(2)}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'sales' && data.length > 1) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                <td colspan="2" class="text-left">TOTAL</td>
+                <td class="text-right">₹${salesTotalSum.toLocaleString()}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'party_payout' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                <td colspan="2" class="text-left">TOTAL</td>
+                <td class="text-right col-narrow">${pureTotalSum.toFixed(3)}</td>
+                <td class="text-right">${mcTotalSum.toLocaleString()}</td>
             </tr>
         </tfoot>`;
     } else {
@@ -1242,8 +1348,8 @@ function fetchDseLedger() {
             renderDseTable(data);
         })
         .catch(err => {
-            console.error(err);
-            reportResults.innerHTML = "<p class='text-danger'>Error fetching data.</p>";
+            console.error('Report error:', err);
+            reportResults.innerHTML = `<p class='text-danger'>Error fetching data: ${err.message}</p>`;
             let btn = document.getElementById("export-report-btn");
             if(btn) btn.classList.add("d-none");
         });
