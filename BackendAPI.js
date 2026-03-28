@@ -3263,12 +3263,6 @@ app.get('/report_dse_stock', (req, res) => {
             SELECT pm.dsename AS dse, pmi.item, -IFNULL(pmi.totalwt, 0) AS weight, -IFNULL(pmi.count, 0) AS count, -IFNULL(pmi.weight, 0) AS silver
             FROM puremc pm
             JOIN puremcitem pmi ON pm.pureid = pmi.pureid
-
-            UNION ALL
-            
-            SELECT i.dse, ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
-            FROM inventory i 
-            JOIN inventoryitem ii ON i.inventid = ii.inventid
         ) t
         ${whereStr}
         GROUP BY dse, item
