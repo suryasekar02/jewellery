@@ -9,7 +9,30 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // Serve static files from 'public' folder
 
-// Request logging middleware
+// Auth Middleware
+const authorize = (allowedRoles = []) => {
+    return (req, res, next) => {
+        const userRole = req.headers['x-user-role'];
+        
+        // Admin always has full access
+        if (userRole === 'admin') {
+            return next();
+        }
+
+        // If no role provided, we'll allow for now to prevent breaking existing clients (like APK)
+        // but strictly enforce for "office" role once header is present.
+        if (!userRole) {
+            return next();
+        }
+
+        if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
+            console.warn(`Access denied for role: ${userRole} at ${req.method} ${req.url}`);
+            return res.status(403).json({ error: 'Unauthorized access: This action is restricted to Administrators.' });
+        }
+        next();
+    };
+};
+
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] Received request: ${req.method} ${req.url}`);
     next();
@@ -61,7 +84,7 @@ function getNextId(table, column, prefix, callback) {
 
     });
 }
-app.post('/add_dse', (req, res) => {
+app.post('/add_dse', authorize(['admin']), (req, res) => {
     let dsename = req.body.dsename;
     if (!dsename) return res.status(400).send('DSE Name is required');
 
@@ -96,7 +119,7 @@ app.post('/add_dse', (req, res) => {
     });
 });
 
-app.post('/add_user', (req, res) => {
+app.post('/add_user', authorize(['admin']), (req, res) => {
     let loginname = req.body.loginname;
     if (!loginname) {
         return res.status(400).send('Login name is required');
@@ -135,7 +158,7 @@ app.post('/add_user', (req, res) => {
 });
 
 
-app.get('/view_users', (req, res) => {
+app.get('/view_users', authorize(['admin']), (req, res) => {
     let sql = 'SELECT * FROM user';
     db.query(sql, (err, results) => {
         if (err) {
@@ -147,7 +170,7 @@ app.get('/view_users', (req, res) => {
     });
 });
 
-app.post('/update_password', (req, res) => {
+app.post('/update_password', authorize(['admin']), (req, res) => {
     let loginName = req.body.loginname;
     let newPassword = req.body.password;
 
@@ -262,7 +285,7 @@ app.get('/view_dse', (req, res) => {
     });
 });
 
-app.post('/delete_dse', (req, res) => {
+app.post('/delete_dse', authorize(['admin']), (req, res) => {
     console.log('Received delete_dse request. Body:', req.body);
     let did = req.body.did;
     if (!did) {
@@ -315,7 +338,7 @@ app.post('/delete_dse', (req, res) => {
     });
 });
 
-app.post('/add_category', (req, res) => {
+app.post('/add_category', authorize(['admin']), (req, res) => {
     let categoryname = req.body.categoryname || req.body.categoryName;
     if (!categoryname) return res.status(400).send('Category Name is required');
 
@@ -358,7 +381,7 @@ app.get('/view_category', (req, res) => {
     });
 });
 
-app.post('/delete_category', (req, res) => {
+app.post('/delete_category', authorize(['admin']), (req, res) => {
     let cid = req.body.cid;
     // 1. Fetch record
     db.query('SELECT * FROM category WHERE cid = ?', [cid], (err, results) => {
@@ -390,7 +413,7 @@ app.post('/delete_category', (req, res) => {
     });
 });
 
-app.post('/add_retailer', (req, res) => {
+app.post('/add_retailer', authorize(['admin']), (req, res) => {
     let retailername = req.body.retailername;
     if (!retailername) return res.status(400).send('Retailer Name is required');
 
@@ -573,7 +596,7 @@ app.get('/view_retailer_by_dse', (req, res) => {
 
 });
 
-app.post('/add_item', (req, res) => {
+app.post('/add_item', authorize(['admin']), (req, res) => {
     let itemname = req.body.itemName;
     if (!itemname) return res.status(400).send('Item Name is required');
 
@@ -618,7 +641,7 @@ app.get('/view_item', (req, res) => {
     });
 });
 
-app.post('/delete_item', (req, res) => {
+app.post('/delete_item', authorize(['admin']), (req, res) => {
     let iid = req.body.iid;
     // 1. Fetch record
     db.query('SELECT * FROM item WHERE iid = ?', [iid], (err, results) => {
@@ -724,7 +747,7 @@ app.get('/view_sales', (req, res) => {
     });
 });
 
-app.post('/delete_sale', (req, res) => {
+app.post('/delete_sale', authorize(['admin']), (req, res) => {
     console.log("Received delete_sale request. Body:", req.body);
     let invno = req.body.invno;
     if (!invno) {
@@ -828,7 +851,7 @@ app.get('/get_last_stock_id', (req, res) => {
     });
 });
 
-app.post('/add_stock', (req, res) => {
+app.post('/add_stock', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -921,7 +944,7 @@ app.get('/view_stock', (req, res) => {
     });
 });
 
-app.post('/delete_stock', (req, res) => {
+app.post('/delete_stock', authorize(['admin']), (req, res) => {
     let stockid = req.body.stockid;
     if (!stockid) {
         res.status(400).send("Missing stockid");
@@ -1005,7 +1028,7 @@ app.get('/get_last_inventory_id', (req, res) => {
     });
 });
 
-app.post('/add_inventory', (req, res) => {
+app.post('/add_inventory', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -1099,7 +1122,7 @@ app.get('/view_inventory', (req, res) => {
     });
 });
 
-app.post('/delete_inventory', (req, res) => {
+app.post('/delete_inventory', authorize(['admin']), (req, res) => {
     let inventid = req.body.inventid;
     if (!inventid) {
         res.status(400).send("Missing inventid");
@@ -1185,7 +1208,7 @@ app.get('/get_last_purchase_id', (req, res) => {
     });
 });
 
-app.post('/add_purchase', (req, res) => {
+app.post('/add_purchase', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -1283,7 +1306,7 @@ app.get('/view_purchase', (req, res) => {
     });
 });
 
-app.post('/delete_purchase', (req, res) => {
+app.post('/delete_purchase', authorize(['admin']), (req, res) => {
     let purchaseid = req.body.purchaseid;
     if (!purchaseid) {
         res.status(400).send("Missing purchaseid");
@@ -1369,7 +1392,7 @@ app.get('/get_last_puremc_id', (req, res) => {
     });
 });
 
-app.post('/add_puremc', (req, res) => {
+app.post('/add_puremc', authorize(['admin']), (req, res) => {
 
     db.beginTransaction((err) => {
 
@@ -1504,7 +1527,7 @@ app.get('/view_puremc', (req, res) => {
     });
 });
 
-app.post('/delete_puremc', (req, res) => {
+app.post('/delete_puremc', authorize(['admin']), (req, res) => {
     let pureid = req.body.pureid;
     if (!pureid) {
         res.status(400).send("Missing pureid");
@@ -1591,7 +1614,7 @@ app.get('/get_last_payment_id', (req, res) => {
     });
 });
 
-app.post('/add_payment', (req, res) => {
+app.post('/add_payment', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -1648,7 +1671,7 @@ app.get('/view_payment', (req, res) => {
     });
 });
 
-app.post('/delete_payment', (req, res) => {
+app.post('/delete_payment', authorize(['admin']), (req, res) => {
     let payid = req.body.payid;
     if (!payid) {
         res.status(400).send("Missing payid");
@@ -1737,7 +1760,7 @@ app.get('/get_last_retailer_payment_id', (req, res) => {
     });
 });
 
-app.post('/add_retailer_payment', (req, res) => {
+app.post('/add_retailer_payment', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -1822,7 +1845,7 @@ app.get('/view_retailer_payment', (req, res) => {
     });
 });
 
-app.post('/delete_retailer_payment', (req, res) => {
+app.post('/delete_retailer_payment', authorize(['admin']), (req, res) => {
     let payid = req.body.payid;
     if (!payid) {
         res.status(400).send("Missing payid");
@@ -1912,7 +1935,7 @@ app.get('/get_last_expense_id', (req, res) => {
     });
 });
 
-app.post('/add_expense', (req, res) => {
+app.post('/add_expense', authorize(['admin']), (req, res) => {
     let expense = {
         exid: req.body.exid,
         date: req.body.date,
@@ -1935,7 +1958,7 @@ app.post('/add_expense', (req, res) => {
     });
 });
 
-app.post('/add_partypayout', (req, res) => {
+app.post('/add_partypayout', authorize(['admin']), (req, res) => {
     let payout = {
         parid: req.body.parid,
         date: req.body.date,
@@ -1969,7 +1992,7 @@ app.get('/view_partypayout', (req, res) => {
     });
 });
 
-app.post('/delete_partypayout', (req, res) => {
+app.post('/delete_partypayout', authorize(['admin']), (req, res) => {
     let parid = req.body.parid;
     if (!parid) {
         res.status(400).send("Missing parid");
@@ -2043,7 +2066,7 @@ app.get('/view_expense', (req, res) => {
     });
 });
 
-app.post('/delete_expense', (req, res) => {
+app.post('/delete_expense', authorize(['admin']), (req, res) => {
     let exid = req.body.exid;
     if (!exid) {
         res.status(400).send("Missing exid");
@@ -2118,7 +2141,7 @@ app.get('/get_particulars', (req, res) => {
     });
 });
 
-app.post('/add_particular', (req, res) => {
+app.post('/add_particular', authorize(['admin']), (req, res) => {
 
     res.send('Particular added (logic handled by adding expense)');
 });
@@ -2140,7 +2163,7 @@ app.get('/get_last_party_id', (req, res) => {
     });
 });
 
-app.post('/add_party', (req, res) => {
+app.post('/add_party', authorize(['admin']), (req, res) => {
     let partyname = req.body.partyname;
     if (!partyname) return res.status(400).send('Party Name is required');
 
@@ -2183,7 +2206,7 @@ app.get('/view_parties', (req, res) => {
     });
 });
 
-app.post('/delete_party', (req, res) => {
+app.post('/delete_party', authorize(['admin']), (req, res) => {
     let pid = req.body.pid;
     if (!pid) {
         res.status(400).send("Missing pid");
@@ -2257,7 +2280,7 @@ app.get('/get_last_petrol_id', (req, res) => {
     });
 });
 
-app.post('/add_petrol', (req, res) => {
+app.post('/add_petrol', authorize(['admin']), (req, res) => {
     let petrol = {
         petid: req.body.petid,
         date: req.body.date,
@@ -2299,7 +2322,7 @@ app.get('/view_petrol', (req, res) => {
     });
 });
 
-app.post('/delete_petrol', (req, res) => {
+app.post('/delete_petrol', authorize(['admin']), (req, res) => {
     let petid = req.body.petid;
     // 1. Fetch record
     db.query('SELECT * FROM petrolexpenses WHERE petid = ?', [petid], (err, results) => {
@@ -2386,7 +2409,7 @@ app.get('/view_trash', (req, res) => {
     });
 });
 
-app.post('/delete_trash', (req, res) => {
+app.post('/delete_trash', authorize(['admin']), (req, res) => {
     let sql = 'DELETE FROM TrashTable WHERE trashId = ?';
     db.query(sql, [req.body.trashId], (err, result) => {
         if (err) {
@@ -2738,7 +2761,7 @@ app.get('/get_autocomplete_data', (req, res) => {
 });
 
 
-app.post('/update_dse', (req, res) => {
+app.post('/update_dse', authorize(['admin']), (req, res) => {
   const { did, mobile, email, openbalance, totalbal } = req.body;
   const sql = 'UPDATE dse SET mobile=?, email=?, openbalance=?, totalbal=? WHERE did=?';
   db.query(sql, [mobile, email, openbalance, totalbal, did], (err, result) => {
@@ -2750,7 +2773,7 @@ app.post('/update_dse', (req, res) => {
 // 17 march 
 
 //comment existing /add_sale post code in BackendAPI use below code:
-app.post('/add_sale', (req, res) => {
+app.post('/add_sale', authorize(['admin']), (req, res) => {
     db.beginTransaction((err) => {
         if (err) { throw err; }
 
@@ -3257,6 +3280,12 @@ app.get('/report_dse_stock', (req, res) => {
             SELECT sa.dse, sai.item, -IFNULL(sai.totalweight, 0) AS weight, -IFNULL(sai.count, 0) AS count, -IFNULL(sai.weight, 0) AS silver
             FROM sales sa 
             JOIN salesitem sai ON sa.invno = sai.invno
+            
+            UNION ALL
+            
+            SELECT i.dse, ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
+            FROM inventory i 
+            JOIN inventoryitem ii ON i.inventid = ii.inventid
             
             UNION ALL
 

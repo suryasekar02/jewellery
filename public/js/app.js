@@ -1,6 +1,24 @@
 //const API_URL = 'http://51.20.73.184:3000';
 const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:" || window.location.hostname === "";
 const API_URL = isLocal ? "http://localhost:3000" : "https://jewelleryshop-nk0z.onrender.com";
+
+// Global fetch wrapper for Role-Based Access Control (RBAC)
+const originalFetch = window.fetch;
+window.fetch = function() {
+    let [resource, config] = arguments;
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user && user.Role) {
+        if (!config) config = {};
+        if (!config.headers) config.headers = {};
+        
+        if (config.headers instanceof Headers) {
+            config.headers.set('X-User-Role', user.Role);
+        } else {
+            config.headers['X-User-Role'] = user.Role;
+        }
+    }
+    return originalFetch(resource, config);
+};
 function exportToExcel(type) {
     let containerId = "";
     let baseFileName = type;
@@ -122,6 +140,29 @@ function initDashboard() {
 
     document.getElementById('adminName').textContent = user.username || user.loginname;
 
+    // Apply Role-Based Access Control for Sidebar
+    if (user.Role === 'office') {
+        const restrictedKeywords = ['dse', 'retailers', 'parties', 'items', 'categories', 'users', 'sales', 'stock', 'inventory', 'purchases', 'puremc', 'payments', 'retailer_payments', 'expenses', 'petrol', 'trash'];
+        const allowedKeywords = ['dashboard', 'advanced_search', 'reports'];
+        
+        const sidebarLinks = document.querySelectorAll('.sidebar-menu li a');
+        sidebarLinks.forEach(link => {
+            const href = link.getAttribute('href').substring(1);
+            if (!allowedKeywords.includes(href)) {
+                link.parentElement.classList.add('d-none');
+            }
+        });
+        
+        // Hide menu headers
+        document.querySelectorAll('.menu-header').forEach(header => {
+            header.classList.add('d-none');
+        });
+
+        // Hide specific stat cards in dashboard
+        const totalUsersCard = document.getElementById('stat-total-users')?.closest('.stat-card');
+        if (totalUsersCard) totalUsersCard.classList.add('d-none');
+    }
+
     document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('user');
         window.location.href = 'index.html';
@@ -172,6 +213,15 @@ function initDashboardFilters() {
 }
 
 function showSection(sectionId) {
+    const user = JSON.parse(localStorage.getItem('user'));
+    const allowedForOffice = ['dashboard', 'advanced_search', 'reports'];
+    
+    if (user && user.Role === 'office' && !allowedForOffice.includes(sectionId)) {
+        alert("Access Denied: You do not have permission to access this section.");
+        window.location.hash = '#dashboard';
+        return;
+    }
+
     document.querySelectorAll('.section-content').forEach(el => el.classList.add('d-none'));
     const target = document.getElementById(sectionId + '-section');
     if (target) {
