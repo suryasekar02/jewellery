@@ -3101,24 +3101,122 @@ app.get('/report_item_sale', (req, res) => {
         return res.status(400).json({ error: "Missing date range" });
     }
 
-    const sql = `
-        SELECT 
-            si.item,
-            ROUND(IFNULL(SUM(si.totalweight), 0), 3) AS total_weight,
-            IFNULL(SUM(si.count), 0) AS total_count,
-            ROUND(IFNULL(SUM(si.total), 0), 2) AS total_amount
-        FROM salesitem si
-        JOIN sales s ON si.invno = s.invno
+    // DEBUG LOGGING REQUIREMENT
+    const sqlLogSales = `
+        SELECT IFNULL(SUM(weight), 0) AS total_sales_weight 
+        FROM salesitem si JOIN sales s ON si.invno = s.invno 
         WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
-        GROUP BY si.item
-        ORDER BY si.item
+    `;
+    const sqlLogPureMC = `
+        SELECT IFNULL(SUM(weight), 0) AS total_puremc_weight 
+        FROM puremcitem pmi JOIN puremc pm ON pmi.pureid = pm.pureid 
+        WHERE STR_TO_DATE(pm.date, '%d/%m/%Y') BETWEEN ? AND ?
+    `;
+    const sqlLogPurchase = `
+        SELECT IFNULL(SUM(wt), 0) AS total_purchase_weight 
+        FROM purchaseitem pi JOIN purchase p ON pi.purchaseid = p.purchaseid 
+        WHERE STR_TO_DATE(p.date, '%d/%m/%Y') BETWEEN ? AND ?
     `;
 
-    const params = [from, to];
+    db.query(sqlLogSales, [from, to], (err, salesLogRes) => {
+        if (err) console.error("Error logging sales weight:", err);
+        const salesWeightLog = salesLogRes ? salesLogRes[0].total_sales_weight : 0;
 
-    db.query(sql, params, (err, results) => {
+        db.query(sqlLogPureMC, [from, to], (err, pureLogRes) => {
+            if (err) console.error("Error logging puremc weight:", err);
+            const pureWeightLog = pureLogRes ? pureLogRes[0].total_puremc_weight : 0;
+
+            db.query(sqlLogPurchase, [from, to], (err, purchaseLogRes) => {
+                if (err) console.error("Error logging purchase weight:", err);
+                const purchaseWeightLog = purchaseLogRes ? purchaseLogRes[0].total_purchase_weight : 0;
+
+                console.log(`[DEBUG] Item Sale Report Summary (${from} to ${to}):`);
+                console.log(` - Total salesitem.weight: ${salesWeightLog}`);
+                console.log(` - Total puremcitem.weight: ${pureWeightLog}`);
+                console.log(` - Total purchaseitem.wt: ${purchaseWeightLog}`);
+                console.log(` - Final calculated weight (Sold): ${salesWeightLog + pureWeightLog}`);
+                console.log(` - Tally (Purchase - Sold): ${purchaseWeightLog - (salesWeightLog + pureWeightLog)}`);
+
+                const sqlMain = `
+                    SELECT 
+                        t.item,
+                        ROUND(SUM(CASE WHEN t.type IN ('sale', 'puremc') THEN t.weight ELSE 0 END), 3) AS total_weight,
+                        SUM(CASE WHEN t.type IN ('sale', 'puremc') THEN t.count ELSE 0 END) AS total_count,
+                        ROUND(SUM(CASE WHEN t.type IN ('sale', 'puremc') THEN t.amount ELSE 0 END), 2) AS total_amount,
+                        ROUND(SUM(CASE WHEN t.type = 'purchase' THEN t.weight ELSE 0 END) - SUM(CASE WHEN t.type IN ('sale', 'puremc') THEN t.weight ELSE 0 END), 3) AS tally_weight
+                    FROM (
+                        -- Sales Items
+                        SELECT si.item, si.weight, si.count, si.total AS amount, 'sale' AS type
+                        FROM salesitem si
+                        JOIN sales s ON si.invno = s.invno
+                        WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
+
+                        UNION ALL
+
+                        -- Pure MC Items
+                        SELECT pmi.item, pmi.weight, pmi.count, pmi.totalamount AS amount, 'puremc' AS type
+                        FROM puremcitem pmi
+                        JOIN puremc pm ON pmi.pureid = pm.pureid
+                        WHERE STR_TO_DATE(pm.date, '%d/%m/%Y') BETWEEN ? AND ?
+
+                        UNION ALL
+
+                        -- Purchase Items
+                        SELECT pi.item, pi.wt AS weight, pi.count, pi.totalamount AS amount, 'purchase' AS type
+                        FROM purchaseitem pi
+                        JOIN purchase p ON pi.purchaseid = p.purchaseid
+                        WHERE STR_TO_DATE(p.date, '%d/%m/%Y') BETWEEN ? AND ?
+                    ) t
+                    GROUP BY t.item
+                    ORDER BY t.item
+                `;
+
+                const paramsMain = [from, to, from, to, from, to];
+
+                db.query(sqlMain, paramsMain, (err, results) => {
+                    if (err) {
+                        console.error("SQL Error in Item Sale Report:", err);
+                        return res.status(500).json({ error: "Database error", details: err.message });
+                    }
+                    res.json(results);
+                });
+            });
+        });
+    });
+});
+
+
+// Tally Report (Total Stock Balance)
+app.get('/report_tally', (req, res) => {
+    const sql = `
+        SELECT 
+            t.item,
+            ROUND(
+                SUM(IFNULL(t.p_wt, 0)) - 
+                SUM(IFNULL(t.s_weight, 0)) - 
+                SUM(IFNULL(t.pm_weight, 0)), 
+            3) AS weight
+        FROM (
+            -- Purchase Items (ADD)
+            SELECT item, wt AS p_wt, 0 AS s_weight, 0 AS pm_weight FROM purchaseitem
+            
+            UNION ALL
+            
+            -- Sales Items (SUBTRACT)
+            SELECT item, 0 AS p_wt, weight AS s_weight, 0 AS pm_weight FROM salesitem
+            
+            UNION ALL
+            
+            -- Pure MC Items (SUBTRACT)
+            SELECT item, 0 AS p_wt, 0 AS s_weight, weight AS pm_weight FROM puremcitem
+        ) t
+        GROUP BY t.item
+        ORDER BY t.item
+    `;
+
+    db.query(sql, (err, results) => {
         if (err) {
-            console.error("SQL Error in Item Sale Report:", err);
+            console.error("SQL Error in Tally Report:", err);
             return res.status(500).json({ error: "Database error", details: err.message });
         }
         res.json(results);
@@ -3207,13 +3305,13 @@ app.get('/report_inventory_balance', (req, res) => {
             IFNULL(SUM(count), 0) AS count, 
             ROUND(IFNULL(SUM(silver), 0), 3) AS silver
         FROM (
-            SELECT si.item, IFNULL(si.wt, 0) AS weight, IFNULL(si.count, 0) AS count, IFNULL(si.withcoverwt, 0) AS silver
+            SELECT si.item, -IFNULL(si.wt, 0) AS weight, -IFNULL(si.count, 0) AS count, -IFNULL(si.withcoverwt, 0) AS silver
             FROM stock s 
             JOIN stocksitem si ON s.stockid = si.stockid
             
             UNION ALL
             
-            SELECT ii.item, -IFNULL(ii.wt, 0) AS weight, -IFNULL(ii.count, 0) AS count, -IFNULL(ii.withcoverwt, 0) AS silver
+            SELECT ii.item, IFNULL(ii.wt, 0) AS weight, IFNULL(ii.count, 0) AS count, IFNULL(ii.withcoverwt, 0) AS silver
             FROM inventory i 
             JOIN inventoryitem ii ON i.inventid = ii.inventid
         ) t

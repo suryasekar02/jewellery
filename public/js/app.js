@@ -872,6 +872,9 @@ function toggleReportFilters() {
         
         document.getElementById("itemSaleFromDate").value = firstDay;
         document.getElementById("itemSaleToDate").value = lastDay;
+    } else if (type === "tally_report") {
+        // Tally Report doesn't need date filters based on requirements
+        if (trigger) trigger.classList.remove("d-none");
     }
 }
 
@@ -940,6 +943,8 @@ function loadReport() {
         const from = document.getElementById("itemSaleFromDate").value;
         const to = document.getElementById("itemSaleToDate").value;
         fetchItemSale(from, to);
+    } else if (type === "tally_report") {
+        fetchTallyReport();
     }
 }
 
@@ -1252,9 +1257,9 @@ function renderInventoryTable(data) {
             <thead>
                 <tr>
                     <th>Item</th>
-                    <th>Weight</th>
-                    <th>Count</th>
-                    <th>Silver</th>
+                    <th>Weight<br><small style="font-weight: normal; opacity: 0.8;">(Inv - Stock)</small></th>
+                    <th>Count<br><small style="font-weight: normal; opacity: 0.8;">(Inv - Stock)</small></th>
+                    <th>Silver<br><small style="font-weight: normal; opacity: 0.8;">(Inv - Stock)</small></th>
                 </tr>
             </thead>
             <tbody>
@@ -1738,7 +1743,7 @@ function fetchItemSale(from, to) {
                 if (btn) btn.classList.add("d-none");
                 return;
             }
-            renderItemSaleTable(data);
+            renderItemSaleTable(data, from.includes('tally') || window.location.search.includes('tally_report') || document.getElementById("reportType").value === 'tally_report');
         })
         .catch(err => {
             console.error("Fetch Error:", err);
@@ -1752,17 +1757,19 @@ function fetchItemSale(from, to) {
 }
 
 // Render Item Sale Table
-function renderItemSaleTable(data) {
-    let totals = { weight: 0, count: 0, amount: 0 };
+function renderItemSaleTable(data, isTally = false) {
+    let totals = { weight: 0, count: 0, amount: 0, tally: 0 };
     
     let html = `
         <table class="data-table">
             <thead>
                 <tr>
                     <th>Item</th>
-                    <th>Weight</th>
-                    <th>Count</th>
-                    <th>Amount</th>
+                    ${isTally ? '<th>Weight</th>' : `
+                        <th>Weight</th>
+                        <th>Count</th>
+                        <th>Amount</th>
+                    `}
                 </tr>
             </thead>
             <tbody>
@@ -1772,17 +1779,23 @@ function renderItemSaleTable(data) {
         let weight = parseFloat(row.total_weight || 0);
         let count = parseInt(row.total_count || 0);
         let amount = parseFloat(row.total_amount || 0);
+        let tally = parseFloat(row.tally_weight || 0);
 
         totals.weight += weight;
         totals.count += count;
         totals.amount += amount;
+        totals.tally += tally;
 
         html += `
             <tr>
                 <td>${row.item || "-"}</td>
-                <td>${weight.toFixed(3)}</td>
-                <td>${count}</td>
-                <td>${Math.round(amount).toLocaleString()}</td>
+                ${isTally ? `
+                    <td style="font-weight: bold; color: ${tally < 0 ? '#ff4d4d' : '#2ecc71'}">${tally.toFixed(3)}</td>
+                ` : `
+                    <td>${weight.toFixed(3)}</td>
+                    <td>${count}</td>
+                    <td>${Math.round(amount).toLocaleString()}</td>
+                `}
             </tr>
         `;
     });
@@ -1792,9 +1805,13 @@ function renderItemSaleTable(data) {
             <tfoot>
                 <tr>
                     <td>TOTAL</td>
-                    <td>${totals.weight.toFixed(3)}</td>
-                    <td>${totals.count}</td>
-                    <td>${Math.round(totals.amount).toLocaleString()}</td>
+                    ${isTally ? `
+                        <td>${totals.tally.toFixed(3)}</td>
+                    ` : `
+                        <td>${totals.weight.toFixed(3)}</td>
+                        <td>${totals.count}</td>
+                        <td>${Math.round(totals.amount).toLocaleString()}</td>
+                    `}
                 </tr>
             </tfoot>
         </table>
@@ -1810,3 +1827,86 @@ function renderItemSaleTable(data) {
 }
 
 
+
+// Fetch Tally Report
+function fetchTallyReport() {
+    const reportResults = document.getElementById("report-results");
+    reportResults.innerHTML = "<p>Loading Tally Report...</p>";
+
+    const showBtn = document.getElementById("show-report-btn");
+    if (showBtn) showBtn.disabled = true;
+
+    fetch(`${API_URL}/report_tally`)
+        .then(async res => {
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Server Error (${res.status}): ${errText}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (!data || data.length === 0) {
+                reportResults.innerHTML = "<p class='text-muted'>No Data Found.</p>";
+                let btn = document.getElementById("export-report-btn");
+                if (btn) btn.classList.add("d-none");
+                return;
+            }
+            renderTallyTable(data);
+        })
+        .catch(err => {
+            console.error("Fetch Error:", err);
+            reportResults.innerHTML = `<p class='text-danger'><b>Error fetching data:</b> ${err.message}</p>`;
+            let btn = document.getElementById("export-report-btn");
+            if (btn) btn.classList.add("d-none");
+        })
+        .finally(() => {
+            if (showBtn) showBtn.disabled = false;
+        });
+}
+
+// Render Tally Table
+function renderTallyTable(data) {
+    let totalWeight = 0;
+    
+    let html = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th style="text-align: right;">Final Weight</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    data.forEach(row => {
+        let weight = parseFloat(row.weight || 0);
+        totalWeight += weight;
+
+        html += `
+            <tr>
+                <td>${row.item || "-"}</td>
+                <td style="text-align: right; font-weight: bold; color: ${weight < 0 ? '#ff4d4d' : 'var(--primary)'}">${weight.toFixed(3)}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td>TOTAL</td>
+                    <td style="text-align: right;">${totalWeight.toFixed(3)}</td>
+                </tr>
+            </tfoot>
+        </table>
+    `;
+
+    renderToReportContainers(html);
+
+    // Show export button
+    let exportBtn = document.getElementById("export-report-btn");
+    if (exportBtn) {
+        exportBtn.classList.remove("d-none");
+    }
+}
