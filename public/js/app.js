@@ -140,11 +140,11 @@ function initDashboard() {
 
     document.getElementById('adminName').textContent = user.username || user.loginname;
 
-    // Apply Role-Based Access Control for Sidebar
+    // Apply Role-Based Access Control for Sidebar and Dashboard
     if (user.Role === 'office') {
-        const restrictedKeywords = ['dse', 'retailers', 'parties', 'items', 'categories', 'users', 'sales', 'stock', 'inventory', 'purchases', 'puremc', 'payments', 'retailer_payments', 'expenses', 'petrol', 'trash'];
         const allowedKeywords = ['dashboard', 'advanced_search', 'reports'];
         
+        // Hide sidebar menu items not in allowedKeywords
         const sidebarLinks = document.querySelectorAll('.sidebar-menu li a');
         sidebarLinks.forEach(link => {
             const href = link.getAttribute('href').substring(1);
@@ -158,9 +158,36 @@ function initDashboard() {
             header.classList.add('d-none');
         });
 
-        // Hide specific stat cards in dashboard
-        const totalUsersCard = document.getElementById('stat-total-users')?.closest('.stat-card');
-        if (totalUsersCard) totalUsersCard.classList.add('d-none');
+        // Dashboard Card Restrictions
+        const cardsToHide = ['dashboard-cash-in-hand', 'stat-total-users'];
+        cardsToHide.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                const card = el.closest('.stat-card');
+                if (card) {
+                    card.style.setProperty('display', 'none', 'important');
+                    card.classList.add('d-none');
+                }
+            }
+        });
+
+        // Hide Purchase, Party and Tally in dropdowns
+        const hideOptions = (selectId, values) => {
+            const select = document.getElementById(selectId);
+            if (select) {
+                values.forEach(val => {
+                    const opt = select.querySelector(`option[value="${val}"]`);
+                    if (opt) opt.remove();
+                });
+            }
+        };
+
+        hideOptions('searchType', ['purchase']);
+        hideOptions('reportType', ['party', 'tally_report']);
+
+        // Hide Party filter in search
+        const partyFilter = document.getElementById('filter-party-group');
+        if (partyFilter) partyFilter.style.display = 'none';
     }
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -635,12 +662,15 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     }
 
     let columns = [];
+    const user = JSON.parse(localStorage.getItem('user'));
+    const isOffice = user && user.Role === 'office';
+
     if (type === 'sales') columns = ['Date', 'Inv No', 'DSE', 'Retailer', 'Final Total'];
     else if (type === 'payment') columns = ['Date', 'Pay ID', 'DSE', 'Amount', 'Mode'];
     else if (type === 'retailer_payment') columns = ['Date', 'Pay ID', 'DSE', 'Retailer', 'Amount', 'Mode'];
     else if (type === 'stock') columns = ['Date', 'Stock ID', 'DSE'];
     else if (type === 'inventory') columns = ['Date', 'Invent ID', 'DSE'];
-    else if (type === 'purchase') columns = ['Date', 'Purchase ID', 'Party'];
+    else if (type === 'purchase') columns = isOffice ? ['Date', 'Purchase ID'] : ['Date', 'Purchase ID', 'Party'];
     else if (type === 'puremc') columns = ['Date', 'Pure ID', 'DSE', 'Retailer'];
     else if (type === 'expenses') columns = ['Date', 'Ex ID', 'Particulars', 'Pay Mode', 'Amount', 'Pure', 'Description'];
     else if (type === 'petrol') columns = ['Date', 'Pet ID', 'DSE', 'Amount', 'Description'];
@@ -673,7 +703,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         } else if (type === 'inventory') {
             html += `<td>${row.date}</td><td>${row.inventid}</td><td>${row.dse}</td>`;
         } else if (type === 'purchase') {
-            html += `<td>${row.date}</td><td>${row.purchaseid}</td><td>${row.party}</td>`;
+            html += `<td>${row.date}</td><td>${row.purchaseid}</td>${isOffice ? '' : `<td>${row.party}</td>`}`;
         } else if (type === 'puremc') {
             html += `<td>${row.date}</td><td>${row.pureid}</td><td>${row.dsename}</td><td>${row.retailername}</td>`;
         } else if (type === 'expenses') {
@@ -1540,6 +1570,9 @@ function renderReceiveTable(data) {
 
 // Render Party Table
 function renderPartyTable(data) {
+    const user = JSON.parse(localStorage.getItem('user'));
+    const isOffice = user && user.Role === 'office';
+
     let totals = { pure: 0, mc: 0 };
 
     let rows = data.map(row => {
@@ -1549,7 +1582,7 @@ function renderPartyTable(data) {
         totals.mc += mc;
         return `
             <tr>
-                <td>${row.partyname || "-"}</td>
+                ${isOffice ? '' : `<td>${row.partyname || "-"}</td>`}
                 <td>${pure.toFixed(3)}</td>
                 <td>${mc.toFixed(2)}</td>
             </tr>`;
@@ -1559,7 +1592,7 @@ function renderPartyTable(data) {
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Party Name</th>
+                    ${isOffice ? '' : '<th>Party Name</th>'}
                     <th>Pure</th>
                     <th>MC</th>
                 </tr>
@@ -1567,7 +1600,7 @@ function renderPartyTable(data) {
             <tbody>${rows}</tbody>
             <tfoot>
                 <tr>
-                    <td>TOTALS</td>
+                    <td colspan="${isOffice ? 0 : 1}">TOTALS</td>
                     <td>${totals.pure.toFixed(3)}</td>
                     <td>${totals.mc.toFixed(2)}</td>
                 </tr>
@@ -1808,6 +1841,12 @@ function fetchItemSale(from, to) {
 
 // Render Item Sale Table
 function renderItemSaleTable(data, isTally = false) {
+    const user = JSON.parse(localStorage.getItem('user'));
+    const isOffice = user && user.Role === 'office';
+    
+    // RBAC: office role cannot see Tally
+    if (isOffice) isTally = false;
+
     let totals = { weight: 0, count: 0, amount: 0, tally: 0 };
     
     let html = `

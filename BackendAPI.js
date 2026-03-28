@@ -2487,13 +2487,26 @@ app.post('/search_transactions', (req, res) => {
     };
 
     const config = searchConfig[type];
+    const userRole = req.headers['x-user-role'] || 'admin';
+
     if (!config) {
         return res.status(400).json({ error: 'Invalid transaction type' });
+    }
+
+    // RBAC: office role cannot search 'purchase'
+    if (userRole === 'office' && type === 'purchase') {
+        return res.status(403).json({ error: 'Unauthorized: Office role cannot access Purchase data' });
     }
 
     let sql = `SELECT ${config.select} FROM ${config.table} ${config.alias}`;
     let whereClauses = [];
     let params = [];
+
+    // RBAC: office role can only see 'Office' paymode in expenses
+    if (userRole === 'office' && type === 'expenses') {
+        whereClauses.push(`${config.alias}.paymode = ?`);
+        params.push('Office');
+    }
 
     // Date Range Filter
     if (filters.dateFrom) {
@@ -2650,6 +2663,14 @@ app.post('/search_transactions', (req, res) => {
                     }));
                     row.stockItems = row.items;
                 });
+                
+                // RBAC Redaction for 'office' role
+                if (userRole === 'office') {
+                    results.forEach(row => {
+                        if (row.party) row.party = "Restricted";
+                        if (row.partyname) row.partyname = "Restricted";
+                    });
+                }
                 res.json(results);
             });
         } else if (type === 'purchase' && results.length > 0) {
@@ -3195,11 +3216,19 @@ app.get('/report_item_sale', (req, res) => {
                 `;
 
                 const paramsMain = [from, to, from, to, from, to];
+                const userRole = req.headers['x-user-role'] || 'admin';
 
                 db.query(sqlMain, paramsMain, (err, results) => {
                     if (err) {
                         console.error("SQL Error in Item Sale Report:", err);
                         return res.status(500).json({ error: "Database error", details: err.message });
+                    }
+
+                    // RBAC: Redact tally for office role
+                    if (userRole === 'office') {
+                        results.forEach(row => {
+                            row.tally_weight = 0;
+                        });
                     }
                     res.json(results);
                 });
