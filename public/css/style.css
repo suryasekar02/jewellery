@@ -345,6 +345,10 @@ input:focus, select:focus {
     transition: var(--transition);
 }
 
+.export-btn.btn-danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+}
+
 .refresh-btn:hover, .export-btn:hover {
     transform: scale(1.05);
     filter: brightness(1.1);

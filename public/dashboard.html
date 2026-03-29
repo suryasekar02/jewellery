@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="css/style.css?v=12">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 
 <body>
@@ -442,10 +444,12 @@
                     </div>
                 </div>
 
-                <div class="section-actions mt-3">
-                    <button onclick="exportToExcel('report')" class="export-btn btn-success d-none"
-                        id="export-report-btn">
+                <div class="section-actions mt-3 d-none" id="export-report-btn" style="display: flex; gap: 10px;">
+                    <button onclick="exportToExcel('report')" class="export-btn btn-success">
                         <i class="fas fa-file-excel"></i> Export to Excel
+                    </button>
+                    <button onclick="exportToPdf('report')" class="export-btn btn-danger">
+                        <i class="fas fa-file-pdf"></i> Export to PDF
                     </button>
                 </div>
             </div>

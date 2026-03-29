@@ -176,6 +176,191 @@ function renderToReportContainers(html) {
     if (dashboardContainer) dashboardContainer.innerHTML = html;
 }
 
+window.exportToPdf = function(type) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert("PDF library is not loaded.");
+        return;
+    }
+
+    let containerId = "";
+    let baseFileName = type;
+
+    const mapping = {
+        'view_dse': 'dse-data', 'view_retailer': 'retailers-data', 'view_parties': 'parties-data',
+        'view_item': 'items-data', 'view_category': 'categories-data', 'view_users': 'users-data',
+        'sales': 'sales-data', 'stock': 'stock-data', 'inventory': 'inventory-data',
+        'purchase': 'purchases-data', 'puremc': 'puremc-data', 'view_payment': 'payments-data',
+        'view_retailer_payment': 'retailer_payments-data', 'view_expense': 'expenses-data',
+        'view_petrol': 'petrol-data', 'view_trash': 'trash-data'
+    };
+
+    if (document.getElementById(type)) {
+        containerId = type;
+    } else if (type === 'report') {
+        containerId = "report-results";
+        const reportTypeSelect = document.getElementById("reportType");
+        if (reportTypeSelect && reportTypeSelect.value) {
+            baseFileName = reportTypeSelect.value + "_report";
+        }
+    } else if (type === 'search') {
+        containerId = "search-results-container";
+        const searchTypeSelect = document.getElementById("searchType");
+        if (searchTypeSelect && searchTypeSelect.value) {
+            baseFileName = searchTypeSelect.value + "_search";
+        }
+    } else {
+        containerId = mapping[type] || type;
+    }
+
+    const container = document.getElementById(containerId);
+    if (!container) {
+        alert("No data to export");
+        return;
+    }
+
+    const table = container.querySelector("table");
+    if (!table || table.rows.length <= 1) {
+        alert("No data to export");
+        return;
+    }
+
+    try {
+        const { jsPDF } = window.jspdf;
+        
+        const head = [];
+        const body = [];
+        const foot = [];
+
+        // Utility to sanitize text for jsPDF
+        // jsPDF Helvetica doesn't support ₹ natively
+        const sanitize = (text) => text ? text.replace(/₹/g, 'Rs. ').trim() : '';
+
+        // Extract Headers
+        const mainThead = table.tHead;
+        let headerCells = [];
+        if (mainThead && mainThead.rows.length > 0) {
+            headerCells = Array.from(mainThead.rows[0].cells);
+        }
+        
+        const headRow = [];
+        const skipColIndices = new Set();
+        
+        headerCells.forEach((th, idx) => {
+            const text = th.innerText.trim().toUpperCase();
+            if (text === 'DETAILS' || th.classList.contains('btn-action') || text === 'ACTION' || text === '') {
+                skipColIndices.add(idx);
+            } else {
+                headRow.push(sanitize(th.innerText));
+            }
+        });
+        head.push(headRow);
+
+        // Extract Body
+        const mainTbody = table.tBodies[0];
+        let trs = [];
+        if (mainTbody) {
+            trs = Array.from(mainTbody.children);
+        }
+        
+        trs.forEach(tr => {
+            if (tr.classList.contains('detail-row')) {
+                const nestedTable = tr.querySelector('table');
+                if (nestedTable) {
+                    // Nested Heads
+                    const nHeadCells = Array.from(nestedTable.querySelectorAll('thead th'));
+                    if (nHeadCells.length > 0) {
+                        const nHeadRow = [];
+                        nHeadCells.forEach((th, idx) => {
+                            let text = sanitize(th.innerText);
+                            if (idx === 0) text = "    ↳ " + text;
+                            nHeadRow.push({ content: text, styles: { fillColor: [241, 245, 249], textColor: [71, 85, 105], fontStyle: 'bold' } });
+                        });
+                        body.push(nHeadRow);
+                    }
+                    // Nested Body
+                    const nBodyRows = Array.from(nestedTable.querySelectorAll('tbody tr'));
+                    nBodyRows.forEach(nr => {
+                        const nBodyCol = [];
+                        Array.from(nr.cells).forEach((td, idx) => {
+                            let text = sanitize(td.innerText);
+                            if (idx === 0) text = "        " + text;
+                            nBodyCol.push({ content: text, styles: { textColor: [100, 116, 139] } });
+                        });
+                        body.push(nBodyCol);
+                    });
+                    // Nested Foot
+                    const nFootRows = Array.from(nestedTable.querySelectorAll('tfoot tr'));
+                    nFootRows.forEach(nr => {
+                        const nFootCol = [];
+                        Array.from(nr.cells).forEach((td, idx) => {
+                            let text = sanitize(td.innerText);
+                            if (idx === 0) text = "    " + text;
+                            nFootCol.push({ content: text, styles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold' } });
+                        });
+                        body.push(nFootCol);
+                    });
+                }
+            } else {
+                // Main Row
+                const rowData = [];
+                Array.from(tr.cells).forEach((td, idx) => {
+                    if (!skipColIndices.has(idx)) {
+                        rowData.push(sanitize(td.innerText));
+                    }
+                });
+                body.push(rowData);
+            }
+        });
+
+        // Extract Footer
+        const tfoot = table.tFoot;
+        if (tfoot) {
+            Array.from(tfoot.children).forEach(tr => {
+                const footRow = [];
+                Array.from(tr.cells).forEach((td, idx) => {
+                    let content = sanitize(td.innerText);
+                    let colSpan = td.colSpan || 1;
+                    
+                    if (idx === 0 && skipColIndices.has(0)) {
+                         colSpan -= 1;
+                         if (colSpan <= 0) return;
+                    }
+                    footRow.push({ content: content, colSpan: colSpan });
+                });
+                foot.push(footRow);
+            });
+        }
+
+        // Determine Orientation
+        let orientation = 'p';
+        let maxCols = head[0].length;
+        if (body.length > 0) {
+            maxCols = Math.max(maxCols, ...body.map(row => row.length));
+        }
+        if (maxCols > 6) {
+             orientation = 'l';
+        }
+
+        const doc = new jsPDF(orientation, 'pt', 'a4');
+
+        doc.autoTable({
+            head: head,
+            body: body,
+            foot: foot,
+            theme: 'grid',
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [30, 41, 59] },
+            footStyles: { fillColor: [245, 243, 255], textColor: [67, 56, 202], fontStyle: 'bold' }
+        });
+
+        const fileName = `${baseFileName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+        doc.save(fileName);
+    } catch (err) {
+        console.error("PDF Export Error:", err);
+        alert("Export failed: " + err.message);
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('loginForm')) {
         handleLogin();
