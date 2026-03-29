@@ -3726,24 +3726,36 @@ app.get('/report_receive_balance', (req, res) => {
 
 app.get('/dashboard_summary', (req, res) => {
     const now = new Date();
+    const yearStart = `${now.getFullYear()}-01-01`;
+    const yearEnd = `${now.getFullYear()}-12-31`;
+    
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const sql = `
         SELECT
-            -- 1. CASH IN HAND (Fixed Month)
+            -- 1. CASH IN HAND (Fixed Year)
             (IFNULL((
-                SELECT SUM(IF(LOWER(mode) IN ('cash', 'gpay'), amount, 0)) - SUM(IFNULL(purecash, 0))
+                SELECT SUM(IF(LOWER(mode) IN ('cash', 'gpay'), amount, 0))
                 FROM retailerpayment
-                WHERE DATE(date) BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0) + 
+            IFNULL((
+                SELECT SUM(purecash)
+                FROM retailerpayment
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0) - 
             IFNULL((
                 SELECT SUM(amount) FROM expenses 
-                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(mc) FROM partypayout 
-                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) -
+            IFNULL((
+                SELECT SUM(amount) FROM petrolexpenses 
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS cash_in_hand,
 
             -- 2. CASH IN OFFICE (Fixed Month)
@@ -3815,7 +3827,7 @@ app.get('/dashboard_summary', (req, res) => {
     `;
 
     const params = [
-        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Cash in hand
+        yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, // Cash in hand
         monthStart, monthEnd, // Cash in office
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure balance
         monthStart, monthEnd, monthStart, monthEnd, // Sale
