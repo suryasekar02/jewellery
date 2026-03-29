@@ -176,7 +176,7 @@ function renderToReportContainers(html) {
     if (dashboardContainer) dashboardContainer.innerHTML = html;
 }
 
-window.exportToPdf = function(type) {
+window.exportToPdf = async function(type) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
         alert("PDF library is not loaded.");
         return;
@@ -333,17 +333,93 @@ window.exportToPdf = function(type) {
 
         // Determine Orientation
         let orientation = 'p';
-        let maxCols = head[0].length;
-        if (body.length > 0) {
-            maxCols = Math.max(maxCols, ...body.map(row => row.length));
-        }
-        if (maxCols > 6) {
-             orientation = 'l';
-        }
+        // Removed auto-landscape to ensure all PDFs are standard Portrait A4
 
         const doc = new jsPDF(orientation, 'pt', 'a4');
+        let startY = 40;
+
+        if (baseFileName === 'retailer_ledger_report') {
+            const retailerName = document.getElementById("ledgerRetailerName") ? document.getElementById("ledgerRetailerName").value : "";
+            const fromDateVal = document.getElementById("ledgerFromDate") ? document.getElementById("ledgerFromDate").value : "";
+            const toDateVal = document.getElementById("ledgerToDate") ? document.getElementById("ledgerToDate").value : "";
+            
+            let contactNo = "-";
+            let email = "-"; 
+            try {
+                const res = await fetch(`${API_URL}/view_retailer`);
+                if (res.ok) {
+                    const retailers = await res.json();
+                    const ret = retailers.find(r => r.retailername === retailerName);
+                    if (ret && ret.mobile) contactNo = ret.mobile;
+                }
+            } catch(e) { console.error("Could not fetch retailer info for PDF", e); }
+
+            const pageWidth = doc.internal.pageSize.getWidth();
+            
+            // Fixed top address
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Sai Akshana Silvers", pageWidth / 2, 40, { align: 'center' });
+            let textW = doc.getTextWidth("Sai Akshana Silvers");
+            doc.setLineWidth(0.5);
+            doc.line((pageWidth - textW) / 2, 42, (pageWidth + textW) / 2, 42);
+            
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text("Address: FIRST FLOOR M.G.COMPLEX 38 M.G.COLONY,MARUTHAMALAI ROAD, LINGANOOR VADAVALLI, Ph. no.: 8667747950", pageWidth / 2, 55, { align: 'center' });
+            doc.text("GSTIN: 33ANZPK5809K2ZB, State: 33-Tamil Nadu", pageWidth / 2, 65, { align: 'center' });
+            
+            textW = doc.getTextWidth("GSTIN: 33ANZPK5809K2ZB, State: 33-Tamil Nadu");
+            doc.setDrawColor(200, 200, 200); 
+            doc.line((pageWidth - textW) / 2, 67, (pageWidth + textW) / 2, 67);
+
+            // Title
+            doc.setFontSize(18);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Party Statement", pageWidth / 2, 100, { align: 'center' });
+            
+            textW = doc.getTextWidth("Party Statement");
+            doc.setDrawColor(0, 0, 0); 
+            doc.setLineWidth(1.5);
+            doc.line((pageWidth - textW) / 2, 104, (pageWidth + textW) / 2, 104);
+            
+            // Party details left aligned
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Party name: ${retailerName}`, 40, 140);
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Contact no.: ${contactNo}`, 40, 155);
+            doc.text(`Email: ${email}`, 40, 170);
+            
+            // Duration
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            const formatD = (d) => d ? d.split('-').reverse().join('/') : '';
+            const durationText = (fromDateVal || toDateVal) ? `From ${formatD(fromDateVal) || 'Start'} to ${formatD(toDateVal) || 'End'}` : "All Time";
+            doc.text(`Duration: ${durationText}`, 40, 195);
+
+            startY = 215; // Set startY for autoTable
+        } else {
+            // General Title for all other PDFs
+            const titleStr = baseFileName.replace(/view_/g, '').replace(/[-_]/g, ' ').toUpperCase();
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'bold');
+            doc.text(titleStr, pdfWidth / 2, 40, { align: 'center' });
+            
+            const txtWidth = doc.getTextWidth(titleStr);
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(1.0);
+            doc.line((pdfWidth - txtWidth) / 2, 45, (pdfWidth + txtWidth) / 2, 45);
+            
+            startY = 65;
+        }
 
         doc.autoTable({
+            startY: startY,
             head: head,
             body: body,
             foot: foot,
@@ -1018,6 +1094,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     let petrolTotal = 0;
     let paymentTotal = 0;
     let salesTotalSum = 0;
+    let grandSalesTotal = { weight: 0, count: 0, total: 0 };
     let retailerPaymentTotal = { amount: 0, silver: 0, pure: 0, pureCash: 0 };
     let pureTotalSum = 0;
     let mcTotalSum = 0;
@@ -1036,6 +1113,18 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         }
 
         if (type === 'sales') {
+            let wtS = 0, ctS = 0, totS = 0;
+            if (row.items) {
+                row.items.forEach(it => {
+                    wtS += parseFloat(it.weight || it.wt || 0);
+                    ctS += parseInt(it.count || 0);
+                    totS += parseFloat(it.total || it.totalamount || 0);
+                });
+            }
+            grandSalesTotal.weight += wtS;
+            grandSalesTotal.count += ctS;
+            grandSalesTotal.total += totS;
+
             const finalTotal = parseFloat(row.finaltotal || 0);
             salesTotalSum += finalTotal;
             html += `<td class="text-left">${row.date || '-'}</td><td class="text-left">${row.invno || '-'}</td><td class="text-left col-dsename">${row.dse || '-'}</td><td class="text-left col-retailer">${row.retailer || '-'}</td><td class="text-right">₹${finalTotal.toLocaleString()}</td>`;
@@ -1264,8 +1353,11 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         html += `</tbody>
         <tfoot class="total-row">
             <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
-                <td colspan="5" class="text-left">TOTAL</td>
-                <td class="text-right">₹${salesTotalSum.toLocaleString()}</td>
+                <td class="text-left"><span style="color: #6366f1;">TOTAL</span></td>
+                <td class="text-right">Weight: ${grandSalesTotal.weight.toFixed(3)}</td>
+                <td class="text-right">Count: ${grandSalesTotal.count}</td>
+                <td class="text-right" colspan="2">Items Total: ₹${grandSalesTotal.total.toLocaleString()}</td>
+                <td class="text-right">Final: ₹${salesTotalSum.toLocaleString()}</td>
             </tr>
         </tfoot>`;
     } else if (type === 'party_payout' && data.length > 0) {
@@ -1673,14 +1765,14 @@ function renderRetailerLedgerTable(data) {
             <tr ${rowStyle}>
                 <td style="white-space: nowrap; padding: 6px 10px;">${row.date}</td>
                 <td style="white-space: nowrap; padding: 6px 10px;"><span class="badge ${getBadgeClass(row.type)}" style="font-size: 10px; padding: 2px 6px;">${row.type}</span></td>
-                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.saleAmt || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${Math.round(parseFloat(row.saleAmt || 0)).toLocaleString()}</td>
                 <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.salePure || 0).toFixed(3)}</td>
-                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.recCash || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${Math.round(parseFloat(row.recCash || 0)).toLocaleString()}</td>
                 <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.recPure || 0).toFixed(3)}</td>
-                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.pureCash || 0).toFixed(3)}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${Math.round(parseFloat(row.pureCash || 0)).toLocaleString()}</td>
                 <td style="white-space: nowrap; padding: 6px 10px;">${row.mode || "-"}</td>
                 <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.silver || 0).toFixed(3)}</td>
-                <td class="text-right" style="white-space: nowrap; padding: 6px 10px; color: #4338ca; font-weight: bold;">₹${parseFloat(row.balDue || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px; color: #4338ca; font-weight: bold;">₹${Math.round(parseFloat(row.balDue || 0)).toLocaleString()}</td>
                 <td class="text-right" style="white-space: nowrap; padding: 6px 10px; color: #059669; font-weight: bold;">${parseFloat(row.balPure || 0).toFixed(3)} g</td>
             </tr>
         `;
@@ -1781,7 +1873,7 @@ function renderRetailerTable(data) {
                 <td>${row.dsename || "-"}</td>
                 <td>${row.retailername || "-"}</td>
                 <td>${row.district || "-"}</td>
-                <td>${balDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td>${Math.round(balDue).toLocaleString()}</td>
                 <td><b>${balPur.toFixed(3)}</b></td>
             </tr>
         `;
@@ -1792,7 +1884,7 @@ function renderRetailerTable(data) {
             <tfoot class="total-row">
                 <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                     <td colspan="3" class="text-left">TOTAL</td>
-                    <td class="text-left">₹${totalBalanceDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="text-left">₹${Math.round(totalBalanceDue).toLocaleString()}</td>
                     <td class="text-left"><b>${totalBalPure.toFixed(3)}</b></td>
                 </tr>
             </tfoot>
