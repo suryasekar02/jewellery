@@ -3077,7 +3077,7 @@ app.get('/report_retailer_ledger', (req, res) => {
                     pm.date AS raw_date,
                     'PureMC' AS type,
                     IFNULL(SUM(pi.totalamount), 0) AS saleAmt,
-                    IFNULL(SUM(pi.totalwt), 0) AS salePure,
+                    IFNULL(SUM(pi.weight), 0) AS salePure,
                     0 AS recCash,
                     0 AS recPure,
                     0 AS pureCash,
