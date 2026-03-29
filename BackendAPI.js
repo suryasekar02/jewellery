@@ -3031,6 +3031,180 @@ app.get('/report_dse_ledger', (req, res) => {
         });
     });
 });
+
+app.get('/report_retailer_ledger', (req, res) => {
+    let { retailer, fromDate, toDate } = req.query;
+
+    if (!retailer) {
+        return res.status(400).json({ error: "Missing retailer parameter" });
+    }
+
+    // Normalized dates for calculation
+    const queryFromDate = fromDate || '1970-01-01';
+    const queryToDate = toDate || '2099-12-31';
+
+    // 1. Get Opening Balance from Retailer table
+    let sqlRetailer = `SELECT IFNULL(openbalance, 0) AS openbalance, IFNULL(openpure, 0) AS openpure FROM retailer WHERE TRIM(LOWER(retailername)) = ? LIMIT 1`;
+    db.query(sqlRetailer, [retailer.trim().toLowerCase()], (err, retResults) => {
+        if (err) { console.error(err); return res.status(500).send("Database error"); }
+
+        let startCash = retResults.length > 0 ? parseFloat(retResults[0].openbalance) : 0;
+        let startPure = retResults.length > 0 ? parseFloat(retResults[0].openpure) : 0;
+
+        // 2. Get all transactions
+        let sqlData = `
+            SELECT * FROM (
+                /* 1. Sales */
+                SELECT 
+                    invno AS id, 
+                    date AS raw_date,
+                    'Sale' AS type,
+                    finaltotal AS saleAmt,
+                    0 AS salePure,
+                    0 AS recCash,
+                    0 AS recPure,
+                    0 AS pureCash,
+                    '' AS mode,
+                    0 AS silver
+                FROM sales 
+                WHERE TRIM(LOWER(retailer)) = ?
+
+                UNION ALL
+
+                /* 2. Pure MC (Summed per pureid) */
+                SELECT 
+                    pm.pureid AS id,
+                    pm.date AS raw_date,
+                    'PureMC' AS type,
+                    IFNULL(SUM(pi.totalamount), 0) AS saleAmt,
+                    IFNULL(SUM(pi.totalwt), 0) AS salePure,
+                    0 AS recCash,
+                    0 AS recPure,
+                    0 AS pureCash,
+                    '' AS mode,
+                    0 AS silver
+                FROM puremc pm
+                JOIN puremcitem pi ON pm.pureid = pi.pureid
+                WHERE TRIM(LOWER(pm.retailername)) = ?
+                GROUP BY pm.pureid
+
+                UNION ALL
+
+                /* 3. Payments In */
+                SELECT 
+                    payid AS id,
+                    date AS raw_date,
+                    'Payment-In' AS type,
+                    0 AS saleAmt,
+                    0 AS salePure,
+                    IFNULL(amount, 0) AS recCash,
+                    IFNULL(pure, 0) AS recPure,
+                    IFNULL(purecash, 0) AS pureCash,
+                    mode,
+                    IFNULL(silverweight, 0) AS silver
+                FROM retailerpayment
+                WHERE TRIM(LOWER(retailername)) = ?
+            ) transactions
+            ORDER BY 
+                CASE 
+                    WHEN raw_date LIKE '%/%/%' THEN STR_TO_DATE(raw_date, '%d/%m/%Y')
+                    WHEN raw_date LIKE '%-%-%' AND LENGTH(raw_date) > 10 THEN STR_TO_DATE(raw_date, '%d-%m-%Y')
+                    ELSE STR_TO_DATE(raw_date, '%Y-%m-%d')
+                END ASC
+        `;
+
+        db.query(sqlData, [retailer.trim().toLowerCase(), retailer.trim().toLowerCase(), retailer.trim().toLowerCase()], (err, results) => {
+            if (err) { console.error(err); return res.status(500).send("Database error"); }
+
+            let runningCash = startCash;
+            let runningPure = startPure;
+            let ledger = [];
+
+            results.forEach(row => {
+                // Parse date for comparison
+                let dateObj;
+                if (row.raw_date.includes('/')) {
+                    let parts = row.raw_date.split('/');
+                    dateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                } else {
+                    dateObj = new Date(row.raw_date);
+                }
+                let normDate = dateObj.toISOString().split('T')[0];
+
+                // Calculate balances
+                runningCash += parseFloat(row.saleAmt) - parseFloat(row.recCash);
+                runningPure += parseFloat(row.salePure) - parseFloat(row.recPure);
+
+                // Add to ledger if in range
+                if (normDate >= queryFromDate && normDate <= queryToDate) {
+                    ledger.push({
+                        date: row.raw_date,
+                        type: row.type,
+                        id: row.id,
+                        saleAmt: row.saleAmt,
+                        salePure: row.salePure,
+                        recCash: row.recCash,
+                        recPure: row.recPure,
+                        pureCash: row.pureCash,
+                        mode: row.mode,
+                        silver: row.silver,
+                        balDue: runningCash,
+                        balPure: runningPure
+                    });
+                }
+            });
+
+            // Calculate "Opening Balance" as the state just before the first row in range
+            let finalBalDue = runningCash;
+            let finalBalPure = runningPure;
+            
+            // To get the starting balance for the range, we can trace back or just use the first row's previous state
+            let displayOpeningCash = startCash;
+            let displayOpeningPure = startPure;
+            
+            if (ledger.length > 0) {
+                // The balance before the first matching row
+                displayOpeningCash = ledger[0].balDue - (ledger[0].saleAmt - ledger[0].recCash);
+                displayOpeningPure = ledger[0].balPure - (ledger[0].salePure - ledger[0].recPure);
+            } else if (results.length > 0) {
+                 // If no results in range, find the state after all results prior to fromDate
+                 // This is already accounted for in the loop above by runningCash/runningPure if we had stopped at toDate
+                 // But actually, if ledger is empty, it means either all are before or all are after.
+                 // Let's simplify: the "Opening Balance" for the view is start + all transactions before queryFromDate.
+                 let tempCash = startCash;
+                 let tempPure = startPure;
+                 results.forEach(r => {
+                     let dObj = r.raw_date.includes('/') ? new Date(r.raw_date.split('/').reverse().join('-')) : new Date(r.raw_date);
+                     if (dObj.toISOString().split('T')[0] < queryFromDate) {
+                         tempCash += parseFloat(r.saleAmt) - parseFloat(r.recCash);
+                         tempPure += parseFloat(r.salePure) - parseFloat(r.recPure);
+                     }
+                 });
+                 displayOpeningCash = tempCash;
+                 displayOpeningPure = tempPure;
+            }
+
+            // Insert Opening Balance at the top
+            ledger.unshift({
+                date: fromDate || 'Start',
+                type: 'Opening',
+                id: '-',
+                saleAmt: 0,
+                salePure: 0,
+                recCash: 0,
+                recPure: 0,
+                pureCash: 0,
+                mode: '-',
+                silver: 0,
+                balDue: displayOpeningCash,
+                balPure: displayOpeningPure
+            });
+
+            res.json(ledger);
+        });
+    });
+});
+
 app.get('/report_retailer_analysis', (req, res) => {
     const { dse, district, retailer } = req.query;
     let whereClauses = [];

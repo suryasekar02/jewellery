@@ -278,6 +278,7 @@
                     <select id="reportType" onchange="toggleReportFilters()">
                         <option value="">Select Report</option>
                         <option value="dse">DSE Ledger</option>
+                        <option value="retailer_ledger">Retailer Ledger</option>
                         <option value="retailer">Retailer Analysis</option>
                         <option value="dse_stock">DSE Stock Balance</option>
                         <option value="inventory_balance">Inventory Balance</option>
@@ -324,9 +325,8 @@
                     </div>
                     <div class="form-group">
                         <label>Select Retailer</label>
-                        <select id="reportRetailerName">
-                            <option value="">-- All Retailers --</option>
-                        </select>
+                        <input type="text" id="reportRetailerName" placeholder="Search/All Retailers..." list="reportRetailerList" class="filter-input">
+                        <datalist id="reportRetailerList"></datalist>
                     </div>
                 </div>
 
@@ -343,6 +343,33 @@
                         <select id="reportStockItem" class="form-control">
                             <option value="">All Items</option>
                         </select>
+                    </div>
+                </div>
+
+                <!-- DSE Ledger Filters -->
+                <div id="dse-report-filters" class="search-filters-grid d-none mt-3">
+                    <div class="form-group">
+                        <label>Select DSE</label>
+                        <select id="reportDseSelect">
+                            <option value="">-- All DSE --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Retailer Ledger Filters -->
+                <div id="retailer-ledger-filters" class="search-filters-grid d-none mt-3">
+                    <div class="form-group">
+                        <label>Select Retailer</label>
+                        <input type="text" id="ledgerRetailerName" placeholder="Search Retailer..." list="ledgerRetailerList" class="filter-input">
+                        <datalist id="ledgerRetailerList"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>From Date</label>
+                        <input type="date" id="ledgerFromDate">
+                    </div>
+                    <div class="form-group">
+                        <label>To Date</label>
+                        <input type="date" id="ledgerToDate">
                     </div>
                 </div>
 
@@ -491,7 +518,7 @@
             <h3>Users</h3>
             <div class="section-header-actions">
                 <button
-                    onclick="loadGeneric('view_users', 'users-data', ['userid', 'username', 'loginname', 'mobile', 'Role'])"
+                    onclick="loadGeneric('view_users', 'users-data', ['userid', 'username', 'loginname', 'mobile', 'Role', 'password'])"
                     class="refresh-btn">Refresh</button>
                 <button onclick="exportToExcel('view_users')" class="export-btn btn-success"><i
                         class="fas fa-file-excel"></i> Export</button>

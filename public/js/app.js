@@ -103,15 +103,18 @@ function exportToExcel(type) {
                     detailData.push(detailHeaders);
                 }
  
-                // Extract Body Rows (Skip footers and repetitive headers)
-                const bodyRows = Array.from(nestedTable.querySelectorAll('tbody tr'));
-                bodyRows.forEach(tr => {
+                // Extract Body and Footer Rows (Items and their totals)
+                const rows = Array.from(nestedTable.querySelectorAll('tbody tr, tfoot tr'));
+                rows.forEach(tr => {
                     const firstCellText = (tr.cells[0]?.innerText || "").trim().toUpperCase();
-                    if (["ITEM", "TOTAL", "REF ID"].includes(firstCellText)) return;
+                    // Skip header rows if they are repetitive (RETAILER, ITEM, REF ID)
+                    if (["RETAILER", "ITEM", "REF ID"].includes(firstCellText)) return;
                     
                     const rowData = [parentId, ...Array.from(tr.cells).map(td => td.innerText.trim())];
                     detailData.push(rowData);
                 });
+                // Add a spacer row between different transactions
+                detailData.push([]);
             });
  
             if (detailData.length > 1) {
@@ -401,9 +404,16 @@ async function loadGeneric(endpoint, containerId, columns) {
             columns.forEach(col => {
                 let val = row[col];
                 if (val === undefined || val === null) val = '-';
-                // Basic check for objects (like nested items) - though this generic loader implies flat data or specific cols
                 if (typeof val === 'object') val = JSON.stringify(val);
-                html += `<td>${val}</td>`;
+                
+                if (col.toLowerCase() === 'password') {
+                    html += `<td>
+                        <span class="password-text" data-password="${val}">••••••</span>
+                        <i class="fas fa-eye-slash toggle-btn" onclick="togglePassword(this)" style="cursor: pointer; margin-left: 10px; color: #6366f1;"></i>
+                    </td>`;
+                } else {
+                    html += `<td>${val}</td>`;
+                }
             });
             html += '</tr>';
         });
@@ -413,6 +423,21 @@ async function loadGeneric(endpoint, containerId, columns) {
     } catch (err) {
         console.error(err);
         container.innerHTML = 'Error loading data.';
+    }
+}
+
+// New Helper for Password Toggling
+function togglePassword(el) {
+    const span = el.previousElementSibling;
+    const isHidden = span.textContent === '••••••';
+    if (isHidden) {
+        span.textContent = span.getAttribute('data-password');
+        el.classList.remove('fa-eye-slash');
+        el.classList.add('fa-eye');
+    } else {
+        span.textContent = '••••••';
+        el.classList.remove('fa-eye');
+        el.classList.add('fa-eye-slash');
     }
 }
 
@@ -936,14 +961,17 @@ function renderSearchResults(type, data, containerId = 'search-results-container
                 if (row.items && row.items.length > 0) {
                     let itemTotals = { totalWt: 0, count: 0, amount: 0, cover: 0, withCover: 0, mc: 0, pure: 0 };
                     
-                    nestedHtml = `<table class="nested-table">
+                    nestedHtml = `<table class="nested-table" style="font-size: 12px; width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr>
-                                <th>Item</th><th>Weight</th><th>Count</th>
-                                ${type === 'sales' ? '<th>Rate</th><th>Total</th>' : ''}
-                                ${['stock', 'inventory'].includes(type) ? '<th>Silver</th><th>Cover</th>' : ''}
-                                ${type === 'purchase' ? '<th>MC</th><th>%</th><th>Pure</th><th>Total</th>' : ''}
-                                ${type === 'puremc' ? '<th>MC</th><th>%</th><th>Pure</th><th>Total</th>' : ''}
+                                ${['sales', 'puremc'].includes(type) ? '<th style="text-align: left; min-width: 140px;">Retailer</th>' : ''}
+                                <th style="text-align: left; min-width: 110px; white-space: nowrap;">Item</th>
+                                <th class="text-center" style="min-width: 75px; white-space: nowrap;">Weight</th>
+                                <th class="text-center" style="min-width: 55px; white-space: nowrap;">Count</th>
+                                ${type === 'sales' ? '<th class="text-right" style="min-width: 80px; white-space: nowrap;">Rate</th><th class="text-right" style="min-width: 100px; white-space: nowrap;">Total</th>' : ''}
+                                ${['stock', 'inventory'].includes(type) ? '<th class="text-center" style="min-width: 80px; white-space: nowrap;">Silver</th><th class="text-center" style="min-width: 80px; white-space: nowrap;">Cover</th>' : ''}
+                                ${type === 'purchase' ? '<th class="text-right" style="min-width: 80px; white-space: nowrap;">MC</th><th class="text-center" style="min-width: 65px; white-space: nowrap;">%</th><th class="text-right" style="min-width: 80px; white-space: nowrap;">Pure</th><th class="text-right" style="min-width: 110px; white-space: nowrap;">Total</th>' : ''}
+                                ${type === 'puremc' ? '<th class="text-right" style="min-width: 80px; white-space: nowrap;">MC</th><th class="text-center" style="min-width: 65px; white-space: nowrap;">%</th><th class="text-right" style="min-width: 80px; white-space: nowrap;">Pure</th><th class="text-right" style="min-width: 110px; white-space: nowrap;">Total</th>' : ''}
                             </tr>
                         </thead>
                         <tbody>`;
@@ -966,13 +994,14 @@ function renderSearchResults(type, data, containerId = 'search-results-container
                         itemTotals.pure += pureVal;
 
                         nestedHtml += `<tr>
-                            <td>${item.item || item.product || '-'}</td>
-                            <td>${grossWeight.toFixed(3)}</td>
-                            <td>${ct}</td>
-                            ${type === 'sales' ? `<td>${item.rate}</td><td>₹${amt.toFixed(2)}</td>` : ''}
-                            ${['stock', 'inventory'].includes(type) ? `<td>${netWeight.toFixed(3)}</td><td>${coverWeight.toFixed(3)}</td>` : ''}
-                            ${type === 'purchase' ? `<td>₹${mcVal.toFixed(2)}</td><td>${item.percent || 0}%</td><td>${pureVal.toFixed(3)}</td><td>₹${amt.toFixed(2)}</td>` : ''}
-                            ${type === 'puremc' ? `<td>₹${mcVal.toFixed(2)}</td><td>${item.percent || 0}%</td><td>${pureVal.toFixed(3)}</td><td>₹${amt.toFixed(2)}</td>` : ''}
+                            ${['sales', 'puremc'].includes(type) ? `<td>${(row.retailer || row.retailername || '-').replace(',', ',<br>')}</td>` : ''}
+                            <td style="white-space: nowrap;">${item.item || item.product || '-'}</td>
+                            <td class="text-center" style="white-space: nowrap;">${grossWeight.toFixed(3)}</td>
+                            <td class="text-center" style="white-space: nowrap;">${ct}</td>
+                            ${type === 'sales' ? `<td class="text-right" style="white-space: nowrap;">${item.rate}</td><td class="text-right" style="white-space: nowrap;">₹${amt.toFixed(2)}</td>` : ''}
+                            ${['stock', 'inventory'].includes(type) ? `<td class="text-center" style="white-space: nowrap;">${netWeight.toFixed(3)}</td><td class="text-center" style="white-space: nowrap;">${coverWeight.toFixed(3)}</td>` : ''}
+                            ${type === 'purchase' ? `<td class="text-right" style="white-space: nowrap;">₹${mcVal.toFixed(2)}</td><td class="text-center">${item.percent || 0}%</td><td class="text-right" style="white-space: nowrap;">${pureVal.toFixed(3)}</td><td class="text-right" style="white-space: nowrap;">₹${amt.toFixed(2)}</td>` : ''}
+                            ${type === 'puremc' ? `<td class="text-right" style="white-space: nowrap;">₹${mcVal.toFixed(2)}</td><td class="text-center">${item.percent || 0}%</td><td class="text-right" style="white-space: nowrap;">${pureVal.toFixed(3)}</td><td class="text-right" style="white-space: nowrap;">₹${amt.toFixed(2)}</td>` : ''}
                         </tr>`;
                     });
 
@@ -981,14 +1010,15 @@ function renderSearchResults(type, data, containerId = 'search-results-container
                         nestedHtml += `
                         </tbody>
                         <tfoot>
-                            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe;">
+                            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
                                 <td style="text-align: left;">TOTAL</td>
-                                <td>${itemTotals.totalWt.toFixed(3)}</td>
-                                <td>${itemTotals.count}</td>
-                                ${type === 'sales' ? `<td></td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
-                                ${['stock', 'inventory'].includes(type) ? `<td>${itemTotals.withCover.toFixed(3)}</td><td>${itemTotals.cover.toFixed(3)}</td>` : ''}
-                                ${type === 'purchase' ? `<td>₹${itemTotals.mc.toFixed(2)}</td><td></td><td>${itemTotals.pure.toFixed(3)}</td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
-                                ${type === 'puremc' ? `<td>₹${itemTotals.mc.toFixed(2)}</td><td></td><td>${itemTotals.pure.toFixed(3)}</td><td>₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                                ${['sales', 'puremc'].includes(type) ? '<td></td>' : ''}
+                                <td class="text-center" style="white-space: nowrap;">${itemTotals.totalWt.toFixed(3)}</td>
+                                <td class="text-center" style="white-space: nowrap;">${itemTotals.count}</td>
+                                ${type === 'sales' ? `<td></td><td class="text-right" style="white-space: nowrap;">₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                                ${['stock', 'inventory'].includes(type) ? `<td class="text-center" style="white-space: nowrap;">${itemTotals.withCover.toFixed(3)}</td><td class="text-center" style="white-space: nowrap;">${itemTotals.cover.toFixed(3)}</td>` : ''}
+                                ${type === 'purchase' ? `<td class="text-right" style="white-space: nowrap;">₹${itemTotals.mc.toFixed(2)}</td><td></td><td class="text-right" style="white-space: nowrap;">${itemTotals.pure.toFixed(3)}</td><td class="text-right" style="white-space: nowrap;">₹${itemTotals.amount.toFixed(2)}</td>` : ''}
+                                ${type === 'puremc' ? `<td class="text-right" style="white-space: nowrap;">₹${itemTotals.mc.toFixed(2)}</td><td></td><td class="text-right" style="white-space: nowrap;">${itemTotals.pure.toFixed(3)}</td><td class="text-right" style="white-space: nowrap;">₹${itemTotals.amount.toFixed(2)}</td>` : ''}
                             </tr>
                         </tfoot>`;
                     }
@@ -1091,7 +1121,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
                 ${isOffice ? '' : `<td class="text-right">Count: ${grandPurchaseTotal.count}</td>`}
                 <td class="text-right">
                     ${isOffice ? `Count: ${grandPurchaseTotal.count} | ` : ''}
-                    MC: ₹${grandPurchaseTotal.mc.toLocaleString()} | Pure: ${grandPurchaseTotal.pure.toFixed(3)} | total: ₹${grandPurchaseTotal.total.toLocaleString()}
+                    MC: ₹${grandPurchaseTotal.mc.toLocaleString()} | Pure: ${grandPurchaseTotal.pure.toFixed(3)} | Total: ₹${grandPurchaseTotal.total.toLocaleString()}
                 </td>
             </tr>
         </tfoot>`;
@@ -1196,6 +1226,7 @@ function toggleReportFilters() {
     const retailerBalanceFilters = document.getElementById("retailer-balance-filters");
     const dseSaleFilters = document.getElementById("dse-sale-report-filters");
     const itemSaleFilters = document.getElementById("item-sale-report-filters");
+    const retailerLedgerFilters = document.getElementById("retailer-ledger-filters");
     const trigger = document.getElementById("report-trigger-container");
 
     // Hide all first
@@ -1207,6 +1238,7 @@ function toggleReportFilters() {
     if (retailerBalanceFilters) retailerBalanceFilters.classList.add("d-none");
     if (dseSaleFilters) dseSaleFilters.classList.add("d-none");
     if (itemSaleFilters) itemSaleFilters.classList.add("d-none");
+    if (retailerLedgerFilters) retailerLedgerFilters.classList.add("d-none");
     if (trigger) trigger.classList.add("d-none");
 
     if (type === "dse") {
@@ -1226,24 +1258,40 @@ function toggleReportFilters() {
             })
             .catch(err => console.error("Error loading DSEs:", err));
 
+    } else if (type === "retailer_ledger") {
+        if (retailerLedgerFilters) retailerLedgerFilters.classList.remove("d-none");
+        if (trigger) trigger.classList.remove("d-none");
+
+        const retDl = document.getElementById("ledgerRetailerList");
+        if (retDl) retDl.innerHTML = '';
+
+        fetch(`${API_URL}/get_autocomplete_data`)
+            .then(res => res.json())
+            .then(data => {
+                if (retDl) retDl.innerHTML = (data.retailer || []).map(r => `<option value="${r}">${r}</option>`).join('');
+            })
+            .catch(err => console.error("Error loading ledger filters:", err));
+
     } else if (type === "retailer") {
         if (retailerFilters) retailerFilters.classList.remove("d-none");
         if (trigger) trigger.classList.remove("d-none");
 
         const dseSel = document.getElementById("reportRetailerDse");
         const distSel = document.getElementById("reportRetailerDistrict");
-        const retSel = document.getElementById("reportRetailerName");
+        const retInput = document.getElementById("reportRetailerName");
+        const retDl = document.getElementById("reportRetailerList");
 
         if (dseSel) dseSel.innerHTML = '<option value="">-- Loading --</option>';
         if (distSel) distSel.innerHTML = '<option value="">-- Loading --</option>';
-        if (retSel) retSel.innerHTML = '<option value="">-- Loading --</option>';
+        if (retInput) retInput.value = '';
+        if (retDl) retDl.innerHTML = '';
 
         fetch(`${API_URL}/get_autocomplete_data`)
             .then(res => res.json())
             .then(data => {
                 if (dseSel) dseSel.innerHTML = '<option value="">-- All DSE --</option>' + (data.dse || []).map(d => `<option value="${d}">${d}</option>`).join('');
                 if (distSel) distSel.innerHTML = '<option value="">-- All Districts --</option>' + (data.district || []).map(d => `<option value="${d}">${d}</option>`).join('');
-                if (retSel) retSel.innerHTML = '<option value="">-- All Retailers --</option>' + (data.retailer || []).map(r => `<option value="${r}">${r}</option>`).join('');
+                if (retDl) retDl.innerHTML = (data.retailer || []).map(r => `<option value="${r}">${r}</option>`).join('');
             })
             .catch(err => console.error("Error loading filters:", err));
     } else if (type === "dse_stock" || type === "inventory_balance") {
@@ -1367,8 +1415,108 @@ function loadReport() {
         const from = document.getElementById("itemSaleFromDate").value;
         const to = document.getElementById("itemSaleToDate").value;
         fetchItemSale(from, to);
+    } else if (type === "retailer_ledger") {
+        fetchRetailerLedger();
     } else if (type === "tally_report") {
         fetchTallyReport();
+    }
+}
+
+// Fetch Retailer Ledger
+function fetchRetailerLedger() {
+    const reportResults = document.getElementById("report-results");
+    const retailer = document.getElementById("ledgerRetailerName").value;
+    const fromDate = document.getElementById("ledgerFromDate").value;
+    const toDate = document.getElementById("ledgerToDate").value;
+
+    if (!retailer) {
+        alert("Please select a Retailer first.");
+        return;
+    }
+
+    reportResults.innerHTML = "<p>Loading Retailer Ledger...</p>";
+
+    let queryParams = new URLSearchParams();
+    queryParams.append("retailer", retailer);
+    if (fromDate) queryParams.append("fromDate", fromDate);
+    if (toDate) queryParams.append("toDate", toDate);
+
+    fetch(`${API_URL}/report_retailer_ledger?${queryParams.toString()}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch ledger");
+            return res.json();
+        })
+        .then(data => {
+            if (!data || data.length === 0) {
+                reportResults.innerHTML = "<p class='text-muted'>No Ledger Records Found for this Retailer.</p>";
+                return;
+            }
+            renderRetailerLedgerTable(data);
+        })
+        .catch(err => {
+            console.error("Ledger Error:", err);
+            reportResults.innerHTML = `<p class='text-danger'>Error: ${err.message}</p>`;
+        });
+}
+
+function renderRetailerLedgerTable(data) {
+    let html = `
+        <table class="data-table" style="font-size: 11px; width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #1e293b; color: #ffffff;">
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: left;">DATE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: left;">TYPE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 80px;">SALE AMT</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 70px;">SALE PURE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 80px;">RECEIVED</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 70px;">REC PURE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 70px;">PURECASH</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: left; min-width: 80px;">MODE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 70px;">SILVER</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 90px;">BAL DUE</th>
+                    <th style="white-space: nowrap; padding: 8px 10px; text-align: right; min-width: 90px;">BAL PURE</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    data.forEach(row => {
+        const isOpening = row.type === 'Opening';
+        const rowStyle = isOpening ? 'style="background-color: #f8fafc; font-weight: bold; border-bottom: 2px solid #e2e8f0;"' : '';
+        
+        html += `
+            <tr ${rowStyle}>
+                <td style="white-space: nowrap; padding: 6px 10px;">${row.date}</td>
+                <td style="white-space: nowrap; padding: 6px 10px;"><span class="badge ${getBadgeClass(row.type)}" style="font-size: 10px; padding: 2px 6px;">${row.type}</span></td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.saleAmt || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.salePure || 0).toFixed(3)}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.recCash || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.recPure || 0).toFixed(3)}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.pureCash || 0).toFixed(3)}</td>
+                <td style="white-space: nowrap; padding: 6px 10px;">${row.mode || "-"}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px;">${parseFloat(row.silver || 0).toFixed(3)}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px; color: #4338ca; font-weight: bold;">₹${parseFloat(row.balDue || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="text-right" style="white-space: nowrap; padding: 6px 10px; color: #059669; font-weight: bold;">${parseFloat(row.balPure || 0).toFixed(3)} g</td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    
+    const reportResults = document.getElementById("report-results");
+    reportResults.innerHTML = html;
+
+    const exportBtn = document.getElementById("export-report-btn");
+    if (exportBtn) exportBtn.classList.remove("d-none");
+}
+
+function getBadgeClass(type) {
+    switch (type) {
+        case 'Opening': return 'badge-secondary';
+        case 'Sale': return 'badge-success';
+        case 'PureMC': return 'badge-info';
+        case 'Payment-In': return 'badge-warning';
+        default: return 'badge-light';
     }
 }
 
