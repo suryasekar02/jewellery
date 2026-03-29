@@ -3762,37 +3762,53 @@ app.get('/dashboard_summary', (req, res) => {
             IFNULL((
                 SELECT SUM(IF(LOWER(mode) = 'cash', amount, 0)) - SUM(IF(LOWER(mode) = 'office', amount, 0))
                 FROM payment
-                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) AS cash_in_office,
 
-            -- 3. PURE BALANCE (Fixed Month)
+            -- 3. PURE BALANCE BREAKDOWN (Fixed Month)
+            IFNULL((
+                SELECT SUM(pure) FROM expenses 
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) AS pure_exp,
+            IFNULL((
+                SELECT SUM(silverweight) FROM retailerpayment 
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0) AS pure_ret_silver,
+            IFNULL((
+                SELECT SUM(pure) FROM retailerpayment 
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0) AS pure_ret_pure,
+            IFNULL((
+                SELECT SUM(pure) FROM partypayout 
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) AS pure_payout_pure,
             (IFNULL((
                 SELECT SUM(pure) FROM expenses 
-                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) +
             IFNULL((
                 SELECT SUM(silverweight) FROM retailerpayment 
-                WHERE DATE(date) BETWEEN ? AND ?
-            ), 0) -
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0) +
             IFNULL((
                 SELECT SUM(pure) FROM retailerpayment 
-                WHERE DATE(date) BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(pure) FROM partypayout 
-                WHERE STR_TO_DATE(date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS pure_balance,
 
             -- 4. SALE (Performance - Default Month)
             (IFNULL((
-                SELECT SUM(si.totalweight) FROM salesitem si 
+                SELECT SUM(si.weight) FROM salesitem si 
                 JOIN sales s ON si.invno = s.invno 
-                WHERE STR_TO_DATE(s.date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(s.date, '%d/%m/%Y'), STR_TO_DATE(s.date, '%d-%m-%Y'), STR_TO_DATE(s.date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) +
             IFNULL((
                 SELECT SUM(pmi.weight) FROM puremcitem pmi 
                 JOIN puremc pm ON pmi.pureid = pm.pureid 
-                WHERE STR_TO_DATE(pm.date, '%d/%m/%Y') BETWEEN ? AND ?
+                WHERE COALESCE(STR_TO_DATE(pm.date, '%d/%m/%Y'), STR_TO_DATE(pm.date, '%d-%m-%Y'), STR_TO_DATE(pm.date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS sale_weight,
 
             -- 5. PAYIN (Performance - Default Month)
@@ -3805,14 +3821,31 @@ app.get('/dashboard_summary', (req, res) => {
                 WHERE DATE(date) BETWEEN ? AND ?
             ), 0) AS payin_pure,
 
-            -- 6. CREDIT (Cumulative - All Time)
+            -- 6. CREDIT (Monthly Breakdown)
             (IFNULL((SELECT SUM(openbalance) FROM retailer), 0) +
-            IFNULL((SELECT SUM(finaltotal) FROM sales), 0) -
-            IFNULL((SELECT SUM(totalamount) FROM puremcitem), 0) -
-            IFNULL((SELECT SUM(amount) FROM retailerpayment), 0)) AS credit_cash,
+            IFNULL((
+                SELECT SUM(finaltotal) FROM sales 
+                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) +
+            IFNULL((
+                SELECT SUM(i.totalamount) FROM puremcitem i
+                JOIN puremc p ON i.pureid = p.pureid
+                WHERE COALESCE(STR_TO_DATE(p.date, '%d/%m/%Y'), STR_TO_DATE(p.date, '%d-%m-%Y'), STR_TO_DATE(p.date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) -
+            IFNULL((
+                SELECT SUM(amount) FROM retailerpayment 
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0)) AS credit_cash,
             (IFNULL((SELECT SUM(openpure) FROM retailer), 0) +
-            (IFNULL((SELECT SUM(pure) FROM puremcitem), 0) -
-            IFNULL((SELECT SUM(pure) FROM retailerpayment), 0))) AS credit_pure,
+            IFNULL((
+                SELECT SUM(i.pure) FROM puremcitem i
+                JOIN puremc p ON i.pureid = p.pureid
+                WHERE COALESCE(STR_TO_DATE(p.date, '%d/%m/%Y'), STR_TO_DATE(p.date, '%d-%m-%Y'), STR_TO_DATE(p.date, '%Y-%m-%d')) BETWEEN ? AND ?
+            ), 0) -
+            IFNULL((
+                SELECT SUM(pure) FROM retailerpayment 
+                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
+            ), 0)) AS credit_pure,
 
             -- 7. ORIGINAL STATS (Static Month)
             IFNULL((
@@ -3829,9 +3862,12 @@ app.get('/dashboard_summary', (req, res) => {
     const params = [
         yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, // Cash in hand
         monthStart, monthEnd, // Cash in office
-        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure balance
+        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure components
+        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure Balance Total
         monthStart, monthEnd, monthStart, monthEnd, // Sale
         monthStart, monthEnd, monthStart, monthEnd, // Payin
+        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Credit (Cash: Sales, MC, Payment)
+        monthStart, monthEnd, monthStart, monthEnd, // Credit (Pure: MC, Payment)
         monthStart, monthEnd, monthStart, monthEnd // Original Stats
     ];
 
@@ -3848,39 +3884,52 @@ app.get('/dashboard_data', (req, res) => {
     const filter = req.query.filter;
     const today = req.query.today || new Date().toISOString().split('T')[0];
     
-    let saleCondition = "1=1";
-    let payCondition = "1=1";
+    let puremcCondition = "1=1";
     
     // sale date is DD/MM/YYYY
-    const sDate = "STR_TO_DATE(s.date, '%d/%m/%Y')";
+    const sDate = "COALESCE(STR_TO_DATE(s.date, '%d/%m/%Y'), STR_TO_DATE(s.date, '%d-%m-%Y'), STR_TO_DATE(s.date, '%Y-%m-%d'))";
+    // puremc date is DD/MM/YYYY
+    const pmDate = "COALESCE(STR_TO_DATE(pm.date, '%d/%m/%Y'), STR_TO_DATE(pm.date, '%d-%m-%Y'), STR_TO_DATE(pm.date, '%Y-%m-%d'))";
     // retailerpayment date is YYYY-MM-DD
-    const rpDate = "DATE(rp.date)";
+    const rpDate = "COALESCE(STR_TO_DATE(rp.date, '%Y-%m-%d'), STR_TO_DATE(rp.date, '%d/%m/%Y'), STR_TO_DATE(rp.date, '%d-%m-%Y'))";
 
     if (filter === "today") {
         saleCondition = `DATE(${sDate}) = '${today}'`;
-        payCondition = `${rpDate} = '${today}'`;
+        puremcCondition = `DATE(${pmDate}) = '${today}'`;
+        payCondition = `DATE(${rpDate}) = '${today}'`;
     } else if (filter === "week") {
         saleCondition = `YEARWEEK(${sDate}, 1) = YEARWEEK('${today}', 1)`;
+        puremcCondition = `YEARWEEK(${pmDate}, 1) = YEARWEEK('${today}', 1)`;
         payCondition = `YEARWEEK(${rpDate}, 1) = YEARWEEK('${today}', 1)`;
     } else if (filter === "month") {
         saleCondition = `MONTH(${sDate}) = MONTH('${today}') AND YEAR(${sDate}) = YEAR('${today}')`;
+        puremcCondition = `MONTH(${pmDate}) = MONTH('${today}') AND YEAR(${pmDate}) = YEAR('${today}')`;
         payCondition = `MONTH(${rpDate}) = MONTH('${today}') AND YEAR(${rpDate}) = YEAR('${today}')`;
     } else if (filter === "year") {
         saleCondition = `YEAR(${sDate}) = YEAR('${today}')`;
+        puremcCondition = `YEAR(${pmDate}) = YEAR('${today}')`;
         payCondition = `YEAR(${rpDate}) = YEAR('${today}')`;
     } else if (filter === "custom" || filter === "range") {
         const { from, to } = req.query;
         if (from && to) {
             saleCondition = `DATE(${sDate}) BETWEEN '${from}' AND '${to}'`;
-            payCondition = `${rpDate} BETWEEN '${from}' AND '${to}'`;
+            puremcCondition = `DATE(${pmDate}) BETWEEN '${from}' AND '${to}'`;
+            payCondition = `DATE(${rpDate}) BETWEEN '${from}' AND '${to}'`;
         }
     }
 
     const sqlSale = `
-        SELECT ROUND(IFNULL(SUM(si.totalweight), 0), 3) AS sale
+        SELECT ROUND(IFNULL(SUM(si.weight), 0), 3) AS sale
         FROM sales s
         JOIN salesitem si ON s.invno = si.invno
         WHERE ${saleCondition}
+    `;
+
+    const sqlPureMC = `
+        SELECT ROUND(IFNULL(SUM(pmi.weight), 0), 3) AS weight
+        FROM puremc pm
+        JOIN puremcitem pmi ON pm.pureid = pmi.pureid
+        WHERE ${puremcCondition}
     `;
 
     const sqlPayin = `
@@ -3891,23 +3940,22 @@ app.get('/dashboard_data', (req, res) => {
         WHERE ${payCondition}
     `;
 
-    // Execute both queries
-    db.query(sqlSale, (err, saleResult) => {
-        if (err) {
-            console.error("Dashboard Sale Data Error:", err);
-            return res.status(500).json({ error: "Database error", details: err.message });
-        }
+    // Execute all queries
+    db.query(sqlSale, (errSales, resSales) => {
+        if (errSales) return res.status(500).json({ error: errSales });
         
-        db.query(sqlPayin, (err, payinResult) => {
-            if (err) {
-                console.error("Dashboard Payin Data Error:", err);
-                return res.status(500).json({ error: "Database error", details: err.message });
-            }
+        db.query(sqlPureMC, (errMC, resMC) => {
+            if (errMC) return res.status(500).json({ error: errMC });
             
-            res.json({
-                sale_weight: saleResult[0].sale,
-                payin_cash: payinResult[0].cash,
-                payin_pure: payinResult[0].pure
+            db.query(sqlPayin, (errPay, resPay) => {
+                if (errPay) return res.status(500).json({ error: errPay });
+
+                const totalWeight = (parseFloat(resSales[0].sale) || 0) + (parseFloat(resMC[0].weight) || 0);
+                res.json({
+                    sale_weight: totalWeight,
+                    payin_cash: resPay[0].cash,
+                    payin_pure: resPay[0].pure
+                });
             });
         });
     });
