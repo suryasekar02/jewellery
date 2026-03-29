@@ -770,15 +770,15 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     const user = JSON.parse(localStorage.getItem('user'));
     const isOffice = user && user.Role === 'office';
 
-    if (type === 'sales') columns = ['Date', 'Retailer', 'Final Total'];
-    else if (type === 'payment') columns = ['DSE Name', 'Date', 'Payment Mode', 'Amount'];
-    else if (type === 'retailer_payment') columns = ['Date', 'DSE', 'Retailer', 'Amount', 'Mode', 'Silver Weight', 'Pure', 'Pure Cash'];
+    if (type === 'sales') columns = ['Date', 'Invoice Number', 'DSE', 'Retailer', 'Final Total'];
+    else if (type === 'payment') columns = ['Date', 'DSE Name', 'Payment Mode', 'Amount'];
+    else if (type === 'retailer_payment') columns = ['Date', 'DSE', 'Retailer', 'Mode', 'Amount', 'Silver Weight', 'Pure', 'Pure Cash'];
     else if (type === 'stock') columns = ['Date', 'Stock ID', 'DSE'];
     else if (type === 'inventory') columns = ['Date', 'Invent ID', 'DSE'];
     else if (type === 'purchase') columns = isOffice ? ['Date', 'Purchase ID'] : ['Date', 'Purchase ID', 'Party'];
     else if (type === 'puremc') columns = ['Date', 'Pure ID', 'DSE', 'Retailer'];
     else if (type === 'expenses') columns = ['Date', 'Ex ID', 'Particulars', 'Pay Mode', 'Amount', 'Pure', 'Description'];
-    else if (type === 'petrol') columns = ['DSE Name', 'Date', 'Description', 'Amount'];
+    else if (type === 'petrol') columns = ['Date', 'DSE Name', 'Description', 'Amount'];
     else if (type === 'party_payout') columns = ['Date', 'Party Name', 'Pure', 'MC'];
 
     const colClasses = {
@@ -796,7 +796,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     let html = '<table class="data-table"><thead><tr>';
 
     // Check if Type supports Nested Grid (Sales and Retailer Payment removed for clean overview)
-    const hasNested = ['stock', 'purchase', 'puremc', 'inventory'].includes(type);
+    const hasNested = ['sales', 'stock', 'purchase', 'puremc', 'inventory'].includes(type);
     if (hasNested) html += '<th class="text-center" style="width: 50px;">Details</th>';
 
     columns.forEach(col => {
@@ -808,6 +808,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
     let petrolTotal = 0;
     let paymentTotal = 0;
     let salesTotalSum = 0;
+    let retailerPaymentTotal = { amount: 0, silver: 0, pure: 0, pureCash: 0 };
     let pureTotalSum = 0;
     let mcTotalSum = 0;
     let grandStockTotal = { weight: 0, count: 0, silver: 0, cover: 0 };
@@ -827,13 +828,21 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         if (type === 'sales') {
             const finalTotal = parseFloat(row.finaltotal || 0);
             salesTotalSum += finalTotal;
-            html += `<td class="text-left">${row.date}</td><td class="text-left col-retailer">${row.retailer}</td><td class="text-right">₹${finalTotal.toLocaleString()}</td>`;
+            html += `<td class="text-left">${row.date || '-'}</td><td class="text-left">${row.invno || '-'}</td><td class="text-left col-dsename">${row.dse || '-'}</td><td class="text-left col-retailer">${row.retailer || '-'}</td><td class="text-right">₹${finalTotal.toLocaleString()}</td>`;
         } else if (type === 'payment') {
             const amt = parseFloat(row.amount || 0);
             paymentTotal += amt;
-            html += `<td class="text-left col-dsename">${row.dsename}</td><td class="text-left">${row.date}</td><td class="text-left">${row.mode}</td><td class="text-right">₹${amt.toFixed(2)}</td>`;
+            html += `<td class="text-left">${row.date || '-'}</td><td class="text-left col-dsename">${row.dsename || '-'}</td><td class="text-left">${row.mode || '-'}</td><td class="text-right">₹${amt.toLocaleString()}</td>`;
         } else if (type === 'retailer_payment') {
-            html += `<td class="text-left">${row.date}</td><td class="text-left col-dsename">${row.dsename}</td><td class="text-left col-retailer">${row.retailername}</td><td class="text-right">₹${row.amount}</td><td class="text-left">${row.mode}</td><td class="text-right col-narrow">${row.silverweight || 0}</td><td class="text-right col-narrow">${parseFloat(row.pure || 0).toFixed(3)}</td><td class="text-right">₹${parseFloat(row.purecash || 0).toFixed(2)}</td>`;
+            const amt = parseFloat(row.amount || 0);
+            const sil = parseFloat(row.silverweight || 0);
+            const pur = parseFloat(row.pure || 0);
+            const pc = parseFloat(row.purecash || 0);
+            retailerPaymentTotal.amount += amt;
+            retailerPaymentTotal.silver += sil;
+            retailerPaymentTotal.pure += pur;
+            retailerPaymentTotal.pureCash += pc;
+            html += `<td class="text-left">${row.date || '-'}</td><td class="text-left col-dsename">${row.dsename || '-'}</td><td class="text-left col-retailer">${row.retailername || '-'}</td><td class="text-left">${row.mode || '-'}</td><td class="text-right">₹${amt.toLocaleString()}</td><td class="text-right col-narrow">${sil.toFixed(3)}</td><td class="text-right col-narrow">${pur.toFixed(3)}</td><td class="text-right">₹${pc.toLocaleString()}</td>`;
         } else if (type === 'stock') {
             let wtSum = 0, ctSum = 0, svSum = 0, cvSum = 0;
             if (row.items) {
@@ -911,7 +920,7 @@ function renderSearchResults(type, data, containerId = 'search-results-container
         } else if (type === 'petrol') {
             const petAmt = parseFloat(row.amount || 0);
             petrolTotal += petAmt;
-            html += `<td class="text-left col-dsename">${row.dsename || '-'}</td><td class="text-left">${row.date}</td><td class="text-left">${row.description || '-'}</td><td class="text-right">₹${petAmt.toFixed(2)}</td>`;
+            html += `<td class="text-left">${row.date || '-'}</td><td class="text-left col-dsename">${row.dsename || '-'}</td><td class="text-left">${row.description || '-'}</td><td class="text-right">₹${petAmt.toLocaleString()}</td>`;
         } else if (type === 'party_payout') {
             const pureVal = parseFloat(row.pure || 0);
             const mcVal = parseFloat(row.mc || 0);
@@ -1025,11 +1034,22 @@ function renderSearchResults(type, data, containerId = 'search-results-container
                 <td class="text-right">₹${paymentTotal.toFixed(2)}</td>
             </tr>
         </tfoot>`;
-    } else if (type === 'sales' && data.length > 1) {
+    } else if (type === 'retailer_payment' && data.length > 0) {
         html += `</tbody>
         <tfoot class="total-row">
             <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
-                <td colspan="2" class="text-left">TOTAL</td>
+                <td colspan="4" class="text-left">TOTAL</td>
+                <td class="text-right">₹${retailerPaymentTotal.amount.toLocaleString()}</td>
+                <td class="text-right col-narrow">${retailerPaymentTotal.silver.toFixed(3)}</td>
+                <td class="text-right col-narrow">${retailerPaymentTotal.pure.toFixed(3)}</td>
+                <td class="text-right">₹${retailerPaymentTotal.pureCash.toLocaleString()}</td>
+            </tr>
+        </tfoot>`;
+    } else if (type === 'sales' && data.length > 0) {
+        html += `</tbody>
+        <tfoot class="total-row">
+            <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                <td colspan="5" class="text-left">TOTAL</td>
                 <td class="text-right">₹${salesTotalSum.toLocaleString()}</td>
             </tr>
         </tfoot>`;
@@ -1148,6 +1168,9 @@ async function loadTransactions(type) {
 }
 
 // ================= REPORT =================
+let retailerAnalysisData = [];
+let originalRetailerData = [];
+let retailerSortState = { field: '', order: 'none' }; 
 
 function toggleReportFilters() {
     let type = document.getElementById("reportType").value;
@@ -1378,7 +1401,10 @@ function fetchRetailerAnalysis() {
                 if (btn) btn.classList.add("d-none");
                 return;
             }
-            renderRetailerTable(data);
+            retailerAnalysisData = [...data];
+            originalRetailerData = [...data];
+            retailerSortState = { field: '', order: 'none' };
+            renderRetailerTable(retailerAnalysisData);
         })
         .catch(err => {
             console.error("Fetch Error:", err);
@@ -1390,6 +1416,9 @@ function fetchRetailerAnalysis() {
 
 // Render Retailer Table
 function renderRetailerTable(data) {
+    let totalBalanceDue = 0;
+    let totalBalPure = 0;
+
     let html = `
         <table class="data-table">
             <thead>
@@ -1397,26 +1426,44 @@ function renderRetailerTable(data) {
                     <th>DSE Name</th>
                     <th>Retailer</th>
                     <th>District</th>
-                    <th>Balance Due</th>
-                    <th>Bal Pure</th>
+                    <th onclick="sortRetailerReport('balance_due')" style="cursor: pointer; user-select: none;">
+                        Balance Due ${getSortIcon('balance_due')}
+                    </th>
+                    <th onclick="sortRetailerReport('bal_pure')" style="cursor: pointer; user-select: none;">
+                        Bal Pure ${getSortIcon('bal_pure')}
+                    </th>
                 </tr>
             </thead>
             <tbody>
     `;
 
     data.forEach(row => {
+        const balDue = parseFloat(row.balance_due || 0);
+        const balPur = parseFloat(row.bal_pure || 0);
+        totalBalanceDue += balDue;
+        totalBalPure += balPur;
+
         html += `
             <tr>
                 <td>${row.dsename || "-"}</td>
                 <td>${row.retailername || "-"}</td>
                 <td>${row.district || "-"}</td>
-                <td>${parseFloat(row.balance_due || 0).toFixed(2)}</td>
-                <td><b>${parseFloat(row.bal_pure || 0).toFixed(3)}</b></td>
+                <td>${balDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td><b>${balPur.toFixed(3)}</b></td>
             </tr>
         `;
     });
 
-    html += `</tbody></table>`;
+    html += `
+            </tbody>
+            <tfoot class="total-row">
+                <tr style="font-weight: bold; background: #f5f3ff; color: #4338ca; border-top: 2px solid #c7d2fe; white-space: nowrap;">
+                    <td colspan="3" class="text-left">TOTAL</td>
+                    <td class="text-left">₹${totalBalanceDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="text-left"><b>${totalBalPure.toFixed(3)}</b></td>
+                </tr>
+            </tfoot>
+        </table>`;
     renderToReportContainers(html);
 
     // Show export button
@@ -1424,6 +1471,39 @@ function renderRetailerTable(data) {
     if (exportBtn) {
         exportBtn.classList.remove("d-none");
     }
+}
+
+// Sorting Functions for Retailer Analysis
+function sortRetailerReport(field) {
+    if (retailerSortState.field === field) {
+        if (retailerSortState.order === 'asc') retailerSortState.order = 'desc';
+        else if (retailerSortState.order === 'desc') retailerSortState.order = 'none';
+        else retailerSortState.order = 'asc';
+    } else {
+        retailerSortState.field = field;
+        retailerSortState.order = 'asc';
+    }
+
+    if (retailerSortState.order === 'none') {
+        retailerAnalysisData = [...originalRetailerData];
+    } else {
+        retailerAnalysisData.sort((a, b) => {
+            const valA = parseFloat(a[field] || 0);
+            const valB = parseFloat(b[field] || 0);
+            return retailerSortState.order === 'asc' ? valA - valB : valB - valA;
+        });
+    }
+
+    renderRetailerTable(retailerAnalysisData);
+}
+
+function getSortIcon(field) {
+    if (retailerSortState.field !== field || retailerSortState.order === 'none') {
+        return '<i class="fas fa-sort" style="opacity: 0.3; margin-left: 5px;"></i>';
+    }
+    return retailerSortState.order === 'asc' 
+        ? '<i class="fas fa-sort-up" style="margin-left: 5px; color: #4338ca;"></i>' 
+        : '<i class="fas fa-sort-down" style="margin-left: 5px; color: #4338ca;"></i>';
 }
 
 // Fetch DSE Ledger
