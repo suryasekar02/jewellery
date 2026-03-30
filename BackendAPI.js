@@ -3878,16 +3878,22 @@ app.get('/dashboard_data', (req, res) => {
     const filter = req.query.filter;
     const today = req.query.today || new Date().toISOString().split('T')[0];
     
-    let puremcCondition = "1=1";
-    
     // sale date is DD/MM/YYYY
     const sDate = "COALESCE(STR_TO_DATE(s.date, '%d/%m/%Y'), STR_TO_DATE(s.date, '%d-%m-%Y'), STR_TO_DATE(s.date, '%Y-%m-%d'))";
     // puremc date is DD/MM/YYYY
     const pmDate = "COALESCE(STR_TO_DATE(pm.date, '%d/%m/%Y'), STR_TO_DATE(pm.date, '%d-%m-%Y'), STR_TO_DATE(pm.date, '%Y-%m-%d'))";
     // retailerpayment date is YYYY-MM-DD
-    const rpDate = "COALESCE(STR_TO_DATE(rp.date, '%Y-%m-%d'), STR_TO_DATE(rp.date, '%d/%m/%Y'), STR_TO_DATE(rp.date, '%d-%m-%Y'))";
+    const rpDate = "rp.date";
 
-    if (filter === "today") {
+    let saleCondition = `MONTH(${sDate}) = MONTH('${today}') AND YEAR(${sDate}) = YEAR('${today}')`;
+    let puremcCondition = `MONTH(${pmDate}) = MONTH('${today}') AND YEAR(${pmDate}) = YEAR('${today}')`;
+    let payCondition = `MONTH(${rpDate}) = MONTH('${today}') AND YEAR(${rpDate}) = YEAR('${today}')`;
+
+    if (filter === "all") {
+        saleCondition = "1=1";
+        puremcCondition = "1=1";
+        payCondition = "1=1";
+    } else if (filter === "today") {
         saleCondition = `DATE(${sDate}) = '${today}'`;
         puremcCondition = `DATE(${pmDate}) = '${today}'`;
         payCondition = `DATE(${rpDate}) = '${today}'`;
