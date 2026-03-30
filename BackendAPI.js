@@ -2647,6 +2647,7 @@ app.post('/search_transactions', (req, res) => {
     db.query(sql, params, (err, results) => {
         if (err) {
             console.error(err);
+            fs.appendFileSync('search_debug.log', `Search Error: ${err.message}\nSQL: ${sql}\nParams: ${JSON.stringify(params)}\n`);
             res.status(500).json({ error: 'Database search error' });
             return;
         }
@@ -3759,14 +3760,21 @@ app.get('/dashboard_summary', (req, res) => {
             ), 0)) AS cash_in_hand,
 
             -- 2. CASH IN OFFICE (Current Month)
-            COALESCE((
-                SELECT 
-                    SUM(IF(mode = 'Cash', COALESCE(PaymentReceived.amount, 0), 0)) - 
-                    SUM(IF(mode = 'Cash' AND dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0)) - 
-                    SUM(IF(dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0))
-                FROM payment AS PaymentReceived
-                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
-            ), 0) AS CashInOffice,
+            (
+                COALESCE((
+                    SELECT 
+                        SUM(IF(mode = 'Cash', COALESCE(PaymentReceived.amount, 0), 0)) - 
+                        SUM(IF(mode = 'Cash' AND dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0)) - 
+                        SUM(IF(dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0))
+                    FROM payment AS PaymentReceived
+                    WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+                ), 0) -
+                COALESCE((
+                    SELECT SUM(COALESCE(amount, 0)) FROM expenses
+                    WHERE paymode = 'Office'
+                    AND COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
+                ), 0)
+            ) AS CashInOffice,
 
             -- 3. PURE BALANCE BREAKDOWN (Fixed Month)
             IFNULL((
@@ -3864,7 +3872,7 @@ app.get('/dashboard_summary', (req, res) => {
 
     const params = [
         yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, // Cash in hand
-        monthStart, monthEnd, // Cash in office
+        monthStart, monthEnd, monthStart, monthEnd, // Cash in office (payment, expenses)
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure components
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure Balance Total
         monthStart, monthEnd, monthStart, monthEnd, // Sale
