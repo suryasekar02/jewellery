@@ -3878,12 +3878,25 @@ app.get('/dashboard_data', (req, res) => {
     const filter = req.query.filter;
     const today = req.query.today || new Date().toISOString().split('T')[0];
     
-    // sale date is DD/MM/YYYY
-    const sDate = "COALESCE(STR_TO_DATE(s.date, '%d/%m/%Y'), STR_TO_DATE(s.date, '%d-%m-%Y'), STR_TO_DATE(s.date, '%Y-%m-%d'))";
-    // puremc date is DD/MM/YYYY
-    const pmDate = "COALESCE(STR_TO_DATE(pm.date, '%d/%m/%Y'), STR_TO_DATE(pm.date, '%d-%m-%Y'), STR_TO_DATE(pm.date, '%Y-%m-%d'))";
-    // retailerpayment date is YYYY-MM-DD
-    const rpDate = "rp.date";
+    // Stable Date Parsing for multiple formats
+    const sDate = `(CASE 
+        WHEN s.date LIKE '__/%' THEN STR_TO_DATE(s.date, '%d/%m/%Y')
+        WHEN s.date LIKE '__-%' THEN STR_TO_DATE(s.date, '%d-%m-%Y')
+        WHEN s.date LIKE '____-%' THEN STR_TO_DATE(s.date, '%Y-%m-%d')
+        ELSE STR_TO_DATE(s.date, '%d/%m/%Y')
+    END)`;
+    const pmDate = `(CASE 
+        WHEN pm.date LIKE '__/%' THEN STR_TO_DATE(pm.date, '%d/%m/%Y')
+        WHEN pm.date LIKE '__-%' THEN STR_TO_DATE(pm.date, '%d-%m-%Y')
+        WHEN pm.date LIKE '____-%' THEN STR_TO_DATE(pm.date, '%Y-%m-%d')
+        ELSE STR_TO_DATE(pm.date, '%d/%m/%Y')
+    END)`;
+    const rpDate = `(CASE 
+        WHEN rp.date LIKE '____-%' THEN STR_TO_DATE(rp.date, '%Y-%m-%d')
+        WHEN rp.date LIKE '__/%' THEN STR_TO_DATE(rp.date, '%d/%m/%Y')
+        WHEN rp.date LIKE '__-%' THEN STR_TO_DATE(rp.date, '%d-%m-%Y')
+        ELSE STR_TO_DATE(rp.date, '%Y-%m-%d')
+    END)`;
 
     let saleCondition = `MONTH(${sDate}) = MONTH('${today}') AND YEAR(${sDate}) = YEAR('${today}')`;
     let puremcCondition = `MONTH(${pmDate}) = MONTH('${today}') AND YEAR(${pmDate}) = YEAR('${today}')`;

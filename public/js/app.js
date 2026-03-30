@@ -777,11 +777,8 @@ async function loadDashboard(filter = null, from = '', to = '') {
             filter = document.getElementById('timeFilter')?.value || 'month';
         }
 
-        let url = `${API_URL}/dashboard_data?filter=${filter}`;
-        if (filter === 'today') {
-            const today = new Date().toISOString().split('T')[0];
-            url += `&today=${today}`;
-        }
+        const todayParam = new Date().toISOString().split('T')[0];
+        let url = `${API_URL}/dashboard_data?filter=${filter}&today=${todayParam}`;
         if (from) url += `&from=${from}`;
         if (to) url += `&to=${to}`;
 
