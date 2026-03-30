@@ -3980,6 +3980,44 @@ app.get('/latest_transactions', (req, res) => {
     });
 });
 
+
+
 app.listen(port, () => {
     console.log("Server running on port " + port);
+});
+
+
+
+app.post('/delete_users', authorize(['admin']), (req, res) => {
+    let uid = req.body.USERID;
+    // 1. Fetch record
+    db.query('SELECT * FROM userid WHERE userid = ?', [userid], (err, results) => {
+        if (err) { console.error(err); res.status(500).send('Error finding user record'); return; }
+        if (results.length === 0) { res.status(404).send('Record not found'); return; }
+
+        let user = results[0];
+        // 2. Add to Trash
+ 
+        let trashFields = {
+            field1: user.userid,
+            field2: user.username,
+            field3: user.password,
+            field4:  user.mobile ,
+            field5: user.email
+        };
+        addToTrash('User', 0, trashFields, 'API', db, (err) => {
+            if (err) console.error("Error adding to trash:", err); // Log but continue delete
+
+            // 3. Delete
+            let sql = 'DELETE FROM user  WHERE uerid = ?';
+            db.query(sql, [userid], (err, result) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).send('Error deleting user record');
+                    return;
+                }
+                res.send('User deleted successfully');
+            });
+        });
+    });
 });
