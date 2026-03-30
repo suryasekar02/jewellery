@@ -3735,28 +3735,23 @@ app.get('/dashboard_summary', (req, res) => {
 
     const sql = `
         SELECT
-            -- 1. CASH IN HAND (Fixed Year)
+            -- 1. CASH IN HAND (Grand Total)
             (IFNULL((
                 SELECT SUM(IF(LOWER(mode) IN ('cash', 'gpay'), amount, 0))
                 FROM retailerpayment
-                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0) + 
             IFNULL((
                 SELECT SUM(purecash)
                 FROM retailerpayment
-                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0) - 
             IFNULL((
                 SELECT SUM(amount) FROM expenses 
-                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(mc) FROM partypayout 
-                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(amount) FROM petrolexpenses 
-                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS cash_in_hand,
 
             -- 2. CASH IN OFFICE (Current Month)
@@ -3871,7 +3866,6 @@ app.get('/dashboard_summary', (req, res) => {
     `;
 
     const params = [
-        yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, yearStart, yearEnd, // Cash in hand
         monthStart, monthEnd, monthStart, monthEnd, // Cash in office (payment, expenses)
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure components
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure Balance Total
