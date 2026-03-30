@@ -3814,40 +3814,33 @@ app.get('/dashboard_summary', (req, res) => {
                 WHERE COALESCE(STR_TO_DATE(pm.date, '%d/%m/%Y'), STR_TO_DATE(pm.date, '%d-%m-%Y'), STR_TO_DATE(pm.date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS sale_weight,
 
-            -- 5. PAYIN (Performance - Default Month)
+            -- 5. PAYIN (Grand Total)
             IFNULL((
                 SELECT SUM(amount) FROM retailerpayment 
-                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) AS payin_cash,
             IFNULL((
                 SELECT SUM(silverweight + pure) FROM retailerpayment 
-                WHERE DATE(date) BETWEEN ? AND ?
             ), 0) AS payin_pure,
 
-            -- 6. CREDIT (Monthly Breakdown)
+            -- 6. CREDIT (Grand Total)
             (IFNULL((SELECT SUM(openbalance) FROM retailer), 0) +
             IFNULL((
                 SELECT SUM(finaltotal) FROM sales 
-                WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) +
             IFNULL((
                 SELECT SUM(i.totalamount) FROM puremcitem i
                 JOIN puremc p ON i.pureid = p.pureid
-                WHERE COALESCE(STR_TO_DATE(p.date, '%d/%m/%Y'), STR_TO_DATE(p.date, '%d-%m-%Y'), STR_TO_DATE(p.date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(amount) FROM retailerpayment 
-                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0)) AS credit_cash,
             (IFNULL((SELECT SUM(openpure) FROM retailer), 0) +
             IFNULL((
                 SELECT SUM(i.pure) FROM puremcitem i
                 JOIN puremc p ON i.pureid = p.pureid
-                WHERE COALESCE(STR_TO_DATE(p.date, '%d/%m/%Y'), STR_TO_DATE(p.date, '%d-%m-%Y'), STR_TO_DATE(p.date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0) -
             IFNULL((
                 SELECT SUM(pure) FROM retailerpayment 
-                WHERE COALESCE(STR_TO_DATE(date, '%Y-%m-%d'), STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y')) BETWEEN ? AND ?
             ), 0)) AS credit_pure,
 
             -- 7. ORIGINAL STATS (Static Month)
@@ -3867,9 +3860,6 @@ app.get('/dashboard_summary', (req, res) => {
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure components
         monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Pure Balance Total
         monthStart, monthEnd, monthStart, monthEnd, // Sale
-        monthStart, monthEnd, monthStart, monthEnd, // Payin
-        monthStart, monthEnd, monthStart, monthEnd, monthStart, monthEnd, // Credit (Cash: Sales, MC, Payment)
-        monthStart, monthEnd, monthStart, monthEnd, // Credit (Pure: MC, Payment)
         monthStart, monthEnd, monthStart, monthEnd // Original Stats
     ];
 
@@ -3939,7 +3929,6 @@ app.get('/dashboard_data', (req, res) => {
             IFNULL(SUM(rp.amount), 0) AS cash,
             ROUND(IFNULL(SUM(rp.pure), 0), 3) AS pure
         FROM retailerpayment rp
-        WHERE ${payCondition}
     `;
 
     // Execute all queries
