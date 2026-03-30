@@ -708,17 +708,17 @@ async function loadDashboardStats() {
         const data = await res.json();
 
         // Original Stats
-        document.getElementById('stat-total-sales').textContent = '₹' + (parseFloat(data.total_sales_value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        document.getElementById('stat-total-sales').textContent = '₹' + (parseFloat(data.total_sales_value) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         document.getElementById('stat-total-orders').textContent = data.total_orders || 0;
         document.getElementById('stat-total-users').textContent = data.total_users || 0;
 
         // New Metrics
-        document.getElementById('dashboard-cash-in-hand').textContent = '₹' + (parseFloat(data.cash_in_hand) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('dashboard-cash-in-office').textContent = '₹' + (parseFloat(data.CashInOffice) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('dashboard-pure-balance').textContent = (parseFloat(data.pure_balance) || 0).toFixed(3) + ' g';
+        document.getElementById('dashboard-cash-in-hand').textContent = '₹' + (parseFloat(data.cash_in_hand) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        document.getElementById('dashboard-cash-in-office').textContent = '₹' + (parseFloat(data.CashInOffice) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        document.getElementById('dashboard-pure-balance').textContent = (parseFloat(data.pure_balance) || 0).toFixed(2) + ' g';
         
-        document.getElementById('dashboard-credit-cash').textContent = '₹' + (parseFloat(data.credit_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('dashboard-credit-pure').textContent = (parseFloat(data.credit_pure) || 0).toFixed(3) + ' g';
+        document.getElementById('dashboard-credit-cash').textContent = '₹' + (parseFloat(data.credit_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        document.getElementById('dashboard-credit-pure').textContent = (parseFloat(data.credit_pure) || 0).toFixed(2) + ' g';
         
         // Performance Metrics (Initial load from summary)
         loadDashboard('month');
@@ -759,7 +759,7 @@ async function loadLatestTransactions() {
                     <td>${tr.invno}</td>
                     <td>${tr.date}</td>
                     <td>${tr.retailer}</td>
-                    <td style="text-align: right; font-weight: 700; color: var(--primary);">₹${(parseFloat(tr.finaltotal) || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--primary);">₹${(parseFloat(tr.finaltotal) || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</td>
                 </tr>
             `;
         });
@@ -789,9 +789,9 @@ async function loadDashboard(filter = null, from = '', to = '') {
         if (!res.ok) throw new Error("Failed to fetch performance data");
         const data = await res.json();
 
-        document.getElementById('saleWeight').textContent = (parseFloat(data.sale_weight) || 0).toFixed(3) + ' g';
-        document.getElementById('payinCash').textContent = '₹' + (parseFloat(data.payin_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('payinPure').textContent = (parseFloat(data.payin_pure) || 0).toFixed(3) + ' g';
+        document.getElementById('saleWeight').textContent = (parseFloat(data.sale_weight) || 0).toFixed(2) + ' g';
+        document.getElementById('payinCash').textContent = '₹' + (parseFloat(data.payin_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        document.getElementById('payinPure').textContent = (parseFloat(data.payin_pure) || 0).toFixed(2) + ' g';
     } catch (err) {
         console.error("Dashboard Performance Error:", err);
     }

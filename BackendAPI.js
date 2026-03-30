@@ -3427,8 +3427,9 @@ app.get('/report_item_sale', (req, res) => {
                         JOIN purchase p ON pi.purchaseid = p.purchaseid
                         WHERE STR_TO_DATE(p.date, '%d/%m/%Y') BETWEEN ? AND ?
                     ) t
-                    GROUP BY t.item
-                    ORDER BY t.item
+                    LEFT JOIN item itm ON TRIM(t.item) = itm.itemname
+                    GROUP BY t.item, itm.iid
+                    ORDER BY CAST(SUBSTRING(IFNULL(itm.iid, 'I999999'), 2) AS UNSIGNED), t.item
                 `;
 
                 const paramsMain = [from, to, from, to, from, to];
@@ -3478,8 +3479,9 @@ app.get('/report_tally', (req, res) => {
             -- Pure MC Items (SUBTRACT)
             SELECT item, 0 AS p_wt, 0 AS s_weight, weight AS pm_weight FROM puremcitem
         ) t
-        GROUP BY t.item
-        ORDER BY t.item
+        LEFT JOIN item itm ON TRIM(t.item) = itm.itemname
+        GROUP BY t.item, itm.iid
+        ORDER BY CAST(SUBSTRING(IFNULL(itm.iid, 'I999999'), 2) AS UNSIGNED), t.item
     `;
 
     db.query(sql, (err, results) => {
