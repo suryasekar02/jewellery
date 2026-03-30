@@ -3538,10 +3538,11 @@ app.get('/report_dse_stock', (req, res) => {
             FROM puremc pm
             JOIN puremcitem pmi ON pm.pureid = pmi.pureid
         ) t
+        LEFT JOIN item itm ON TRIM(t.item) = itm.itemname
         ${whereStr}
-        GROUP BY dse, item
+        GROUP BY dse, item, itm.iid
         HAVING SUM(is_stock) > 0
-        ORDER BY dse, item
+        ORDER BY dse, CAST(SUBSTRING(IFNULL(itm.iid, 'I999999'), 2) AS UNSIGNED), item
     `;
 
     db.query(sql, params, (err, results) => {
@@ -3584,9 +3585,10 @@ app.get('/report_inventory_balance', (req, res) => {
             FROM inventory i 
             JOIN inventoryitem ii ON i.inventid = ii.inventid
         ) t
+        LEFT JOIN item itm ON TRIM(t.item) = itm.itemname
         ${whereStr}
-        GROUP BY item
-        ORDER BY item
+        GROUP BY item, itm.iid
+        ORDER BY CAST(SUBSTRING(IFNULL(itm.iid, 'I999999'), 2) AS UNSIGNED), item
     `;
 
     db.query(sql, params, (err, results) => {
@@ -3600,14 +3602,9 @@ app.get('/report_inventory_balance', (req, res) => {
 
 app.get('/get_item_list', (req, res) => {
     const sql = `
-        SELECT TRIM(item) as itemname FROM stocksitem
-        UNION
-        SELECT TRIM(item) as itemname FROM salesitem
-        UNION
-        SELECT TRIM(item) as itemname FROM puremcitem
-        UNION
-        SELECT TRIM(item) as itemname FROM inventoryitem
-        ORDER BY itemname ASC
+        SELECT TRIM(i.itemname) as itemname 
+        FROM item i
+        ORDER BY CAST(SUBSTRING(i.iid, 2) AS UNSIGNED)
     `;
     db.query(sql, (err, results) => {
         if (err) {
