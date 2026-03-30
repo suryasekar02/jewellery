@@ -3758,12 +3758,15 @@ app.get('/dashboard_summary', (req, res) => {
                 WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
             ), 0)) AS cash_in_hand,
 
-            -- 2. CASH IN OFFICE (Fixed Month)
-            IFNULL((
-                SELECT SUM(IF(LOWER(mode) = 'cash', amount, 0)) - SUM(IF(LOWER(mode) = 'office', amount, 0))
-                FROM payment
+            -- 2. CASH IN OFFICE (Current Month)
+            COALESCE((
+                SELECT 
+                    SUM(IF(mode = 'Cash', COALESCE(PaymentReceived.amount, 0), 0)) - 
+                    SUM(IF(mode = 'Cash' AND dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0)) - 
+                    SUM(IF(dsename = 'Office', COALESCE(PaymentReceived.amount, 0), 0))
+                FROM payment AS PaymentReceived
                 WHERE COALESCE(STR_TO_DATE(date, '%d/%m/%Y'), STR_TO_DATE(date, '%d-%m-%Y'), STR_TO_DATE(date, '%Y-%m-%d')) BETWEEN ? AND ?
-            ), 0) AS cash_in_office,
+            ), 0) AS CashInOffice,
 
             -- 3. PURE BALANCE BREAKDOWN (Fixed Month)
             IFNULL((

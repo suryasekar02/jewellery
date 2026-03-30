@@ -714,7 +714,7 @@ async function loadDashboardStats() {
 
         // New Metrics
         document.getElementById('dashboard-cash-in-hand').textContent = '₹' + (parseFloat(data.cash_in_hand) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('dashboard-cash-in-office').textContent = '₹' + (parseFloat(data.cash_in_office) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        document.getElementById('dashboard-cash-in-office').textContent = '₹' + (parseFloat(data.CashInOffice) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
         document.getElementById('dashboard-pure-balance').textContent = (parseFloat(data.pure_balance) || 0).toFixed(3) + ' g';
         
         document.getElementById('dashboard-credit-cash').textContent = '₹' + (parseFloat(data.credit_cash) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
