@@ -3929,8 +3929,9 @@ app.get('/dashboard_data', (req, res) => {
     const sqlPayin = `
         SELECT 
             IFNULL(SUM(rp.amount), 0) AS cash,
-            ROUND(IFNULL(SUM(rp.pure), 0), 3) AS pure
+            ROUND(IFNULL(SUM(rp.pure), 0), 2) AS pure
         FROM retailerpayment rp
+        WHERE ${payCondition}
     `;
 
     // Execute all queries
